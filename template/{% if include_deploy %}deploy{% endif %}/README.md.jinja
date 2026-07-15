@@ -1,0 +1,34 @@
+# Deploy — {{ project_name }}
+
+Single-host Docker Compose stack: **Caddy** (TLS + reverse proxy) → **backend**{% if include_frontend %} + **frontend**{% endif %}, with **Postgres** and a one-shot **migrate** step.
+
+## First deploy
+
+```bash
+# 1. Put real secrets in ../.env (copy from ../.env.example). NEVER commit it.
+cp ../.env.example ../.env && $EDITOR ../.env      # set SECRET_KEY, DATABASE_URL,
+                                                   # POSTGRES_USER/PASSWORD/DB, ENVIRONMENT=production
+
+# 2. Build + start (migrations run automatically before the backend).
+docker compose --env-file ../.env up -d --build
+
+# 3. Verify.
+docker compose ps
+curl -k https://{{ server_host or "<host>" }}/health
+```
+
+## Update
+
+```bash
+git pull
+docker compose --env-file ../.env up -d --build backend{% if include_frontend %} frontend{% endif %}
+# run migrations if a new one landed:
+docker compose --env-file ../.env run --rm migrate
+```
+
+## Notes
+
+- **Secrets** live only in `../.env` (gitignored) — never in the compose file or the repo.
+- `Caddyfile` uses `tls internal` (self-signed). For a real domain, remove that line for
+  automatic Let's Encrypt.
+- Containers run **read-only** and **non-root** with `no-new-privileges`.

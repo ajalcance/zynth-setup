@@ -23,8 +23,11 @@ backend/                    FastAPI backend (Python 3.12)
     db/                     SQLAlchemy base + async engine/session + models package
   migrations/               Alembic (async env)
   tests/                    pytest (in-memory SQLite) — health smoke tests
-scripts/                    dod-check.py (doc guards)
-docs/                       ARCHITECTURE / PLAN / LESSONS / decisions + product/ + internal/
+{% if include_frontend %}frontend/                   Next.js app
+{% endif %}{% if include_docs_site %}docs-site/                  documentation site
+{% endif %}{% if include_deploy %}deploy/                     Docker Compose + Caddyfile (reverse proxy, Postgres, migrate)
+{% endif %}scripts/                    dod-check.py (doc guards)
+docs/                       ARCHITECTURE / PLAN / LESSONS / decisions
 ```
 
 ## What's implemented

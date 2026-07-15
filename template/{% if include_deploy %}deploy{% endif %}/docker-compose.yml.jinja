@@ -1,0 +1,102 @@
+# {{ project_name }} — deployment stack.
+#
+# Run from this directory on the server:
+#   docker compose --env-file ../.env up -d --build
+#
+# Secrets come from ../.env (never from this file or the repo). Migrations run as a
+# one-shot `migrate` service (alembic upgrade head) before the backend starts.
+
+name: {{ project_slug }}
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+{% if include_frontend %}      - frontend
+{% endif %}    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build: ../backend
+    image: {{ project_slug }}-backend:latest
+    restart: unless-stopped
+    env_file: ../.env
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/health",timeout=3).status==200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # One-shot: applies Alembic migrations, then exits. Backend waits for success.
+  migrate:
+    build: ../backend
+    image: {{ project_slug }}-backend:latest
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    env_file: ../.env
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in ../.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in ../.env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in ../.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+{% if include_frontend %}
+  frontend:
+    build: ../frontend
+    image: {{ project_slug }}-frontend:latest
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /app/.next/cache
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+{% endif %}
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:

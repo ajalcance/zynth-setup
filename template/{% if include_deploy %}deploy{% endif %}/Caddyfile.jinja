@@ -1,0 +1,37 @@
+# {{ project_name }} — reverse proxy.
+#
+# `tls internal` uses Caddy's local CA (self-signed) — works for an IP or a
+# not-yet-DNS host. When a real domain lands, delete the `tls internal` line and
+# Caddy provisions Let's Encrypt automatically for `{{ server_host or "your-domain" }}`.
+
+{{ server_host or ":443" }} {
+	tls internal
+	encode gzip zstd
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# Backend API.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /health {
+		reverse_proxy backend:8000
+	}
+{% if include_frontend %}
+	# Everything else: the frontend.
+	handle {
+		reverse_proxy frontend:3000
+	}
+{% else %}
+	# No frontend: route the root to the backend.
+	handle {
+		reverse_proxy backend:8000
+	}
+{% endif %}
+}
