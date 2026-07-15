@@ -58,6 +58,10 @@ Tag template releases so projects can pin/update to a known version.
 
 ## Roadmap
 
-- **Phase B** — optional stack modules (frontend, docs-site, deploy) behind the toggles.
-- **Phase C** — the optional compliance/observability spine.
+- ✅ **Phase A** — Copier skeleton + always-on framework (docs, CI, gates, backend skeleton, governance).
+- ✅ **Phase B** — optional stack modules behind the toggles:
+  - `include_deploy` → `deploy/` (Docker Compose + Caddy, parameterized by `server_host`).
+  - `include_frontend` → `frontend/` (green Next.js 15 app).
+  - `include_docs_site` → `docs-site/` (green Next.js app that renders `../docs` Markdown).
+- **Phase C** — the optional compliance/observability spine (`include_compliance_spine`).
 - **Phase D** — Copier post-gen tasks, a CI self-test that generates + gates a project.
