@@ -12,6 +12,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from {{ python_package }} import __version__
+{%- if include_compliance_spine %}
+from {{ python_package }}.api import routes_example
+{%- endif %}
 from {{ python_package }}.config import get_settings
 from {{ python_package }}.logger import logger, setup_logging
 
@@ -46,7 +49,9 @@ def create_app() -> FastAPI:
     async def root() -> dict[str, str]:
         """Service banner."""
         return {"service": "{{ project_slug }}", "version": __version__}
-
+{% if include_compliance_spine %}
+    app.include_router(routes_example.router)
+{% endif %}
     return app
 
 

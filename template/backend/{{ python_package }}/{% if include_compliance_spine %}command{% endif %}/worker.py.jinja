@@ -1,0 +1,52 @@
+"""Background worker: drain telemetry events → cold store, then seal the audit chain.
+
+Run it as its own process:  ``python -m {{ python_package }}.command.worker``
+
+Fail-open by design: if it dies, requests are unaffected — only ingest/sealing pauses.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from {{ python_package }}.cache.redis import get_redis
+from {{ python_package }}.command.audit import seal_new
+from {{ python_package }}.command.consumer import consume_once, purge_expired
+from {{ python_package }}.config import get_settings
+from {{ python_package }}.db.connection import get_database_url
+from {{ python_package }}.logger import logger, setup_logging
+
+
+async def run_once() -> tuple[int, int, int]:
+    """One pass: ingest new events, seal the audit chain, purge expired. Returns the counts."""
+    redis = get_redis()
+    engine = create_async_engine(get_database_url())
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as session:
+            stored = await consume_once(redis, session)
+            sealed = await seal_new(session)
+            purged = await purge_expired(session)
+        return stored, sealed, purged
+    finally:
+        await engine.dispose()
+
+
+async def main() -> None:
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    logger.info("command-worker started (poll=%ss)", settings.command_poll_seconds)
+    while True:
+        try:
+            stored, sealed, _purged = await run_once()
+            if stored or sealed:
+                logger.info("worker: %d ingested, %d sealed", stored, sealed)
+        except Exception as exc:  # noqa: BLE001 — the loop must survive transient errors
+            logger.error("worker error: %s", exc)
+        await asyncio.sleep(settings.command_poll_seconds)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

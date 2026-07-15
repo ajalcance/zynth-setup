@@ -1,0 +1,53 @@
+"""Coverage guards: every emitted action has a detection, audit, and compliance decision.
+
+These are what make "audit/monitor/compliance-map everything" mechanical: a new action can't
+ship without a decision in all four registries (telemetry + these three).
+"""
+
+from __future__ import annotations
+
+from {{ python_package }}.command.audit import AUDIT_EXEMPT, AUDITABLE_ACTIONS
+from {{ python_package }}.command.controls import ACTION_CONTROLS, CONTROL_EXEMPT, CONTROLS_BY_ID
+from {{ python_package }}.command.rules import BASELINE_ONLY, DEFAULT_RULES
+from {{ python_package }}.telemetry.registry import COVERAGE, NON_ROUTE_ACTIONS
+
+_EMITTED = {a for actions in COVERAGE.values() for a in actions} | NON_ROUTE_ACTIONS
+
+
+def test_every_action_has_a_detection_decision() -> None:
+    ruled: set[str] = set()
+    for rule in DEFAULT_RULES:
+        ruled.update(rule.actions)
+    undecided = _EMITTED - ruled - BASELINE_ONLY
+    assert not undecided, (
+        "Actions with no detection decision (add a Rule or list in BASELINE_ONLY): "
+        f"{sorted(undecided)}"
+    )
+
+
+def test_every_action_has_an_audit_decision() -> None:
+    undecided = _EMITTED - AUDITABLE_ACTIONS - AUDIT_EXEMPT
+    assert not undecided, (
+        "Actions with no audit decision (add to AUDITABLE_ACTIONS or AUDIT_EXEMPT): "
+        f"{sorted(undecided)}"
+    )
+
+
+def test_every_action_has_a_compliance_decision() -> None:
+    undecided = _EMITTED - set(ACTION_CONTROLS) - CONTROL_EXEMPT
+    assert not undecided, (
+        "Actions with no compliance decision (map in ACTION_CONTROLS or add to CONTROL_EXEMPT): "
+        f"{sorted(undecided)}"
+    )
+
+
+def test_no_stale_decisions() -> None:
+    assert not (BASELINE_ONLY - _EMITTED), "BASELINE_ONLY names actions nothing emits"
+    assert not (set(AUDITABLE_ACTIONS) - _EMITTED), "AUDITABLE_ACTIONS names actions nothing emits"
+    assert not (set(ACTION_CONTROLS) - _EMITTED), "ACTION_CONTROLS names actions nothing emits"
+
+
+def test_control_mappings_reference_real_controls() -> None:
+    for action, ids in ACTION_CONTROLS.items():
+        for cid in ids:
+            assert cid in CONTROLS_BY_ID, f"{action} maps to unknown control {cid}"

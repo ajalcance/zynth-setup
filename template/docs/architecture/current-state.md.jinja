@@ -21,7 +21,11 @@ backend/                    FastAPI backend (Python 3.12)
     config.py               Pydantic settings, fail-closed outside dev
     logger.py               structured JSON logging
     db/                     SQLAlchemy base + async engine/session + models package
-  migrations/               Alembic (async env)
+{% if include_compliance_spine %}    api/                    HTTP routers (example instrumented route)
+    cache/                  async Redis client (fakeredis in tests)
+    telemetry/              event envelope, fail-open emitter, coverage registry
+    command/                cold store (events) + hash-chained audit_log + detection/control catalogs
+{% endif %}  migrations/               Alembic (async env)
   tests/                    pytest (in-memory SQLite) — health smoke tests
 {% if include_frontend %}frontend/                   Next.js app
 {% endif %}{% if include_docs_site %}docs-site/                  documentation site
@@ -36,6 +40,12 @@ docs/                       ARCHITECTURE / PLAN / LESSONS / decisions
 - **Database layer:** SQLAlchemy 2.0 declarative base + async engine/session (`db/`); Alembic ready.
 - **Gates:** ruff / black / mypy --strict / bandit / pip-audit / pytest, pre-commit (gitleaks +
   private-key detection), Semgrep dangerous-ops, and the doc-consistency guards.
+{% if include_compliance_spine %}- **Compliance/observability spine:** fail-open telemetry (`telemetry/`) → Redis stream → cold
+  store (`command/` `events`) → hash-chained tamper-evident `audit_log`, plus detection-rule and
+  compliance-control catalogs. **Four CI coverage-guards** enforce that every emitted action is
+  registered for emit + detection + audit + compliance. One example instrumented route
+  (`GET /api/v1/example`) demonstrates the pattern; the worker (`command/worker.py`) ingests + seals.
+{% endif %}
 
 ## Where as-built diverges from the target
 

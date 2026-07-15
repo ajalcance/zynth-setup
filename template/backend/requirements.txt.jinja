@@ -6,3 +6,6 @@ pydantic-settings==2.14.2
 sqlalchemy[asyncio]==2.0.51
 asyncpg==0.31.0
 alembic==1.18.5
+{%- if include_compliance_spine %}
+redis==8.0.1
+{%- endif %}

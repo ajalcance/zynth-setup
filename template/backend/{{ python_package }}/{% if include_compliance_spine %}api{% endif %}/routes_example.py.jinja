@@ -1,0 +1,25 @@
+"""Example instrumented route — demonstrates the telemetry → spine pattern.
+
+Every action a route emits must be registered in **all four** coverage guards: the telemetry
+registry (emit), the detection rules (a rule or ``BASELINE_ONLY``), the audit decision
+(``AUDITABLE_ACTIONS`` / ``AUDIT_EXEMPT``), and the compliance map (``ACTION_CONTROLS`` /
+``CONTROL_EXEMPT``). CI fails otherwise. This route emits ``example.viewed``; delete it once you
+have real routes (and remove ``example.viewed`` from the four registries).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends
+
+from {{ python_package }}.telemetry import Telemetry, get_telemetry
+
+router = APIRouter(prefix="/api/v1", tags=["example"])
+
+
+@router.get("/example")
+async def example(tel: Telemetry = Depends(get_telemetry)) -> dict[str, Any]:
+    """A demo endpoint that emits an audited, compliance-mapped telemetry event."""
+    await tel.emit(category="example", action="example.viewed", outcome="success")
+    return {"message": "hello from the instrumented example route"}

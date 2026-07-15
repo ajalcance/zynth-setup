@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
+{% if include_compliance_spine -%}
+from fakeredis.aioredis import FakeRedis
+{% endif -%}
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -14,6 +17,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
+{% if include_compliance_spine -%}
+from {{ python_package }}.cache.redis import get_redis
+{% endif -%}
 from {{ python_package }}.db import models  # noqa: F401  (registers tables on Base.metadata)
 from {{ python_package }}.db.base import Base
 from {{ python_package }}.db.connection import get_db
@@ -42,9 +48,24 @@ async def session(db_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
 
+{% if include_compliance_spine -%}
 @pytest_asyncio.fixture
-async def client(db_engine: AsyncEngine) -> AsyncGenerator[AsyncClient, None]:
-    """An HTTP client wired to the app, with the DB dependency overridden to SQLite."""
+async def fake_redis() -> AsyncGenerator[FakeRedis, None]:
+    """A fresh in-memory Redis per test."""
+    redis = FakeRedis(decode_responses=True)
+    yield redis
+    await redis.aclose()
+
+
+{% endif -%}
+@pytest_asyncio.fixture
+async def client(
+    db_engine: AsyncEngine,
+{%- if include_compliance_spine %}
+    fake_redis: FakeRedis,
+{%- endif %}
+) -> AsyncGenerator[AsyncClient, None]:
+    """An HTTP client wired to the app, with the DB (and Redis) dependencies overridden."""
     app = create_app()
     maker = async_sessionmaker(db_engine, expire_on_commit=False)
 
@@ -53,6 +74,9 @@ async def client(db_engine: AsyncEngine) -> AsyncGenerator[AsyncClient, None]:
             yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+{%- if include_compliance_spine %}
+    app.dependency_overrides[get_redis] = lambda: fake_redis
+{%- endif %}
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

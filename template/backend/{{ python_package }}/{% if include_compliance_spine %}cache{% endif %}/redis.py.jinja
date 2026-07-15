@@ -1,0 +1,22 @@
+"""Async Redis client + FastAPI dependency.
+
+The telemetry emitter is **fail-open**: if Redis is unreachable, emission is swallowed and the
+request still succeeds. Tests override ``get_redis`` with an in-memory fake.
+"""
+
+from __future__ import annotations
+
+from redis.asyncio import Redis
+
+from {{ python_package }}.config import get_settings
+
+_client: Redis | None = None
+
+
+def get_redis() -> Redis:
+    """Return a process-wide async Redis client (lazily created)."""
+    global _client
+    if _client is None:
+        url = get_settings().redis_url or "redis://localhost:6379/0"
+        _client = Redis.from_url(url, decode_responses=True)
+    return _client

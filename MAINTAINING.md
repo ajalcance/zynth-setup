@@ -63,5 +63,9 @@ Tag template releases so projects can pin/update to a known version.
   - `include_deploy` → `deploy/` (Docker Compose + Caddy, parameterized by `server_host`).
   - `include_frontend` → `frontend/` (green Next.js 15 app).
   - `include_docs_site` → `docs-site/` (green Next.js app that renders `../docs` Markdown).
-- **Phase C** — the optional compliance/observability spine (`include_compliance_spine`).
-- **Phase D** — Copier post-gen tasks, a CI self-test that generates + gates a project.
+- ✅ **Phase C** — the optional compliance/observability spine (`include_compliance_spine`):
+  telemetry → cold store → hash-chained audit + detection/control catalogs, with **four CI
+  coverage-guards** and one example instrumented action. Wires conditionally into config, main,
+  conftest, models, requirements, and the docs.
+- **Phase D** — Copier post-gen tasks (git init, venv, `pre-commit install`, `make check`) + a CI
+  self-test that generates a project and runs its gates on every template change.

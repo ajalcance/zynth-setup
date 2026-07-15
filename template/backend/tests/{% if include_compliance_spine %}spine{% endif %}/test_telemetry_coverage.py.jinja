@@ -1,0 +1,40 @@
+"""Coverage guard: every app route is registered for telemetry (or explicitly exempt).
+
+Routes are read from the OpenAPI schema (version-stable across FastAPI's route-object changes).
+The auto-docs endpoints (/docs, /openapi.json) are not in the schema, so they need no decision.
+"""
+
+from __future__ import annotations
+
+from {{ python_package }}.main import create_app
+from {{ python_package }}.telemetry.registry import COVERAGE, EXEMPT
+
+_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+
+
+def _app_routes() -> set[tuple[str, str]]:
+    schema = create_app().openapi()
+    out: set[tuple[str, str]] = set()
+    for path, operations in schema.get("paths", {}).items():
+        for method in operations:
+            m = method.upper()
+            if m in _METHODS:
+                out.add((m, path))
+    return out
+
+
+def test_every_route_is_covered_or_exempt() -> None:
+    uncovered = _app_routes() - set(COVERAGE) - set(EXEMPT)
+    assert not uncovered, (
+        "Routes with no telemetry decision (add to COVERAGE or EXEMPT in "
+        f"telemetry/registry.py): {sorted(uncovered)}"
+    )
+
+
+def test_no_stale_registry_entries() -> None:
+    stale = set(COVERAGE) - _app_routes()
+    assert not stale, f"Registry entries for routes that no longer exist: {sorted(stale)}"
+
+
+def test_exempt_and_coverage_do_not_overlap() -> None:
+    assert not set(COVERAGE) & set(EXEMPT)

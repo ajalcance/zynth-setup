@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # --- Secrets (required outside development — fail closed) ---
     secret_key: str = ""
     database_url: str = ""
+{%- if include_compliance_spine %}
+
+    # --- Compliance/observability spine ---
+    redis_url: str = ""
+    telemetry_enabled: bool = True
+    telemetry_stream: str = "{{ project_slug }}:events"
+    telemetry_stream_maxlen: int = 20_000
+    command_retention_days: int = 30
+    command_poll_seconds: float = 2.0
+{%- endif %}
 
     @property
     def is_production(self) -> bool:

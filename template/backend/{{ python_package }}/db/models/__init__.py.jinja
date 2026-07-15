@@ -7,5 +7,12 @@ fixtures see them, e.g.::
 
     __all__ = ["User"]
 """
+{%- if include_compliance_spine %}
+
+from {{ python_package }}.command.models import AuditLog, Event
+
+__all__: list[str] = ["AuditLog", "Event"]
+{%- else %}
 
 __all__: list[str] = []
+{%- endif %}

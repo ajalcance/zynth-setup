@@ -1,0 +1,51 @@
+"""Fail-open event emission to a capped Redis Stream.
+
+Emission NEVER fails a request: if Redis is down, the error is swallowed. A per-request
+``Telemetry`` helper binds the client IP so handlers just call ``tel.emit(...)``.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from fastapi import Depends, Request
+from redis.asyncio import Redis
+
+from {{ python_package }}.cache.redis import get_redis
+from {{ python_package }}.config import get_settings
+from {{ python_package }}.telemetry.envelope import client_ip, make_event
+
+
+async def emit(redis: Redis, event: dict[str, Any]) -> None:
+    """Emit one envelope to the capped stream. Fail-open (swallows any error)."""
+    settings = get_settings()
+    if not settings.telemetry_enabled:
+        return
+    try:
+        await redis.xadd(
+            settings.telemetry_stream,
+            {"e": json.dumps(event)},
+            maxlen=settings.telemetry_stream_maxlen,
+            approximate=True,
+        )
+    except Exception:  # noqa: BLE001 — telemetry must never break a request
+        return
+
+
+class Telemetry:
+    """Per-request emission helper: binds the request's IP + a Redis client."""
+
+    def __init__(self, redis: Redis, ip: str | None) -> None:
+        self._redis = redis
+        self._ip = ip
+
+    async def emit(self, **kwargs: Any) -> None:
+        """Build an envelope (``make_event`` fields) and emit it, fail-open."""
+        kwargs.setdefault("ip", self._ip)
+        await emit(self._redis, make_event(**kwargs))
+
+
+def get_telemetry(request: Request, redis: Redis = Depends(get_redis)) -> Telemetry:
+    """FastAPI dependency yielding a request-bound telemetry emitter."""
+    return Telemetry(redis, client_ip(request))

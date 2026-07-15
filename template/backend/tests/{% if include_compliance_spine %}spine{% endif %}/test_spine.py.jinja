@@ -1,0 +1,44 @@
+"""Spine behavior: emit → ingest → seal → verify, plus the example instrumented route."""
+
+from __future__ import annotations
+
+from fakeredis.aioredis import FakeRedis
+from httpx import AsyncClient
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from {{ python_package }}.command.audit import seal_new, verify_chain
+from {{ python_package }}.command.consumer import consume_once
+from {{ python_package }}.command.models import Event
+from {{ python_package }}.telemetry.emitter import emit
+from {{ python_package }}.telemetry.envelope import make_event
+
+
+async def test_ingest_seal_and_verify(fake_redis: FakeRedis, session: AsyncSession) -> None:
+    await emit(
+        fake_redis,
+        make_event(category="example", action="example.viewed", outcome="success"),
+    )
+    stored = await consume_once(fake_redis, session)
+    assert stored == 1
+    assert await session.scalar(select(func.count()).select_from(Event)) == 1
+
+    # Re-draining is idempotent (event_id is the primary key).
+    assert await consume_once(fake_redis, session) == 0
+
+    # Sealing chains the auditable event; the chain then verifies.
+    assert await seal_new(session) == 1
+    ok, broken_seq, total = await verify_chain(session)
+    assert ok is True and broken_seq is None and total == 1
+
+
+async def test_example_route_emits_ingestable_event(
+    client: AsyncClient, fake_redis: FakeRedis, session: AsyncSession
+) -> None:
+    resp = await client.get("/api/v1/example")
+    assert resp.status_code == 200
+
+    stored = await consume_once(fake_redis, session)
+    assert stored == 1
+    event = (await session.execute(select(Event))).scalar_one()
+    assert event.action == "example.viewed"
