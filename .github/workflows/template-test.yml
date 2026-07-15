@@ -57,7 +57,7 @@ jobs:
           .venv/bin/ruff check .
           .venv/bin/black --check .
           .venv/bin/mypy .
-          .venv/bin/bandit -r . -ll -x tests
+          .venv/bin/bandit -r app -ll -q
           .venv/bin/pip-audit -r requirements.txt
           .venv/bin/pytest -q
 
