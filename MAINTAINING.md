@@ -67,5 +67,7 @@ Tag template releases so projects can pin/update to a known version.
   telemetry → cold store → hash-chained audit + detection/control catalogs, with **four CI
   coverage-guards** and one example instrumented action. Wires conditionally into config, main,
   conftest, models, requirements, and the docs.
-- **Phase D** — Copier post-gen tasks (git init, venv, `pre-commit install`, `make check`) + a CI
-  self-test that generates a project and runs its gates on every template change.
+- ✅ **Phase D** — Copier post-gen `_tasks` (git init, backend venv + deps, `pre-commit install`)
+  + `_message_after_copy`, and a **CI self-test** (`.github/workflows/template-test.yml`) that
+  generates minimal **and** full projects and runs their gates on every change. **Note:** because
+  the template has tasks, generation requires `copier copy --trust` (Copier's safety model).

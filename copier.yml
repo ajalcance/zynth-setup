@@ -101,3 +101,24 @@ include_compliance_spine:
   type: bool
   help: Include the telemetry → audit → compliance coverage-guard spine? (Phase C)
   default: false
+
+# --- Post-generation setup (runs only with `copier copy --trust`) -------------
+# Tasks execute shell commands, so Copier gates them behind --trust. The Python
+# setup is best-effort (|| echo) so a fresh generation never hard-fails offline.
+_tasks:
+  - "git init -q -b main && git add -A"
+  - >-
+    python3 -m venv backend/.venv
+    && backend/.venv/bin/pip install -q -r backend/requirements.txt -r backend/requirements-dev.txt pre-commit
+    && backend/.venv/bin/pre-commit install
+    || echo '⚠  Skipped Python setup (offline?). Set it up manually — see the README Quick start.'
+
+_message_after_copy: |
+  ✅ {{ project_name }} scaffolded.
+
+  Next steps (run from the project root):
+    cd backend && source .venv/bin/activate    # venv is created if you used --trust
+    cd .. && make check && make dod-check       # the full gate — green on a fresh project
+
+  If you generated without --trust, set up the venv manually (see the README Quick start).
+  Review the staged files, then make your first commit.

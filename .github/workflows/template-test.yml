@@ -1,0 +1,92 @@
+# Self-test: generate a project from the template and run ITS gates. This is what
+# guarantees a freshly stamped project is green out of the box — the template can't regress.
+name: Template self-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-and-gate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: minimal
+            extra: ""
+          - name: full
+            extra: >-
+              --data include_frontend=true --data include_docs_site=true
+              --data include_deploy=true --data server_host=example.test
+              --data include_compliance_spine=true
+    name: generate (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Copier
+        run: pipx install copier
+
+      - name: Generate project
+        run: |
+          copier copy --defaults --trust \
+            --data project_name="CI Demo" \
+            --data github_owner="ci" \
+            --data author_name="CI" \
+            --data author_email="ci@example.com" \
+            ${{ matrix.extra }} \
+            . /tmp/gen
+
+      - name: Backend gate
+        working-directory: /tmp/gen/backend
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -r requirements.txt -r requirements-dev.txt
+          .venv/bin/ruff check .
+          .venv/bin/black --check .
+          .venv/bin/mypy .
+          .venv/bin/bandit -r . -ll -x tests
+          .venv/bin/pip-audit -r requirements.txt
+          .venv/bin/pytest -q
+
+      - name: Doc-consistency guards
+        working-directory: /tmp/gen
+        run: python scripts/dod-check.py
+
+      - name: Frontend gate
+        if: matrix.name == 'full'
+        working-directory: /tmp/gen/frontend
+        run: |
+          npm ci
+          npm run lint
+          npx prettier --check .
+          npx tsc --noEmit
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Docs-site gate
+        if: matrix.name == 'full'
+        working-directory: /tmp/gen/docs-site
+        run: |
+          npm ci
+          npm run lint
+          npx prettier --check .
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Deploy compose validates
+        if: matrix.name == 'full'
+        working-directory: /tmp/gen/deploy
+        run: POSTGRES_USER=u POSTGRES_PASSWORD=p POSTGRES_DB=d docker compose config >/dev/null

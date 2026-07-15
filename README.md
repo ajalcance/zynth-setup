@@ -17,15 +17,25 @@ Optional modules (prompted): a Next.js **frontend**, a **docs site**, a **deploy
 Install [Copier](https://copier.readthedocs.io/) (`pipx install copier` or `uv tool install copier`), then:
 
 ```bash
-copier copy gh:ajalcance/zynth-setup my-new-project
+copier copy --trust gh:ajalcance/zynth-setup my-new-project
 cd my-new-project
 ```
 
-Answer the prompts (project name, owner, license, which optional modules). Copier stamps a renamed, ready-to-commit repo. Then:
+`--trust` is required because the template runs post-generation setup tasks (`git init`, create the
+backend venv + install deps, install the pre-commit hook). Answer the prompts (project name, owner,
+license, which optional modules); Copier stamps a renamed, ready-to-commit repo and sets it up.
+
+Then verify the gate is green:
+
+```bash
+make check && make dod-check   # green on a fresh project (venv already created by --trust)
+```
+
+Prefer to set up yourself? Generate without `--trust` is refused when tasks are present — omit them by
+running an older ref, or just run the setup manually:
 
 ```bash
 cd backend && python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt -r requirements-dev.txt
-cd .. && make check && make dod-check   # green on a fresh project
 ```
 
 ## Update an existing project when the template improves
@@ -33,7 +43,7 @@ cd .. && make check && make dod-check   # green on a fresh project
 Copier records your answers in `.copier-answers.yml`, so you can pull framework upgrades later:
 
 ```bash
-copier update           # in the generated project's repo root
+copier update --trust   # in the generated project's repo root
 ```
 
 See [`MAINTAINING.md`](MAINTAINING.md) for how the template is structured and how to evolve it.
