@@ -91,4 +91,4 @@ jobs:
         working-directory: /tmp/gen/deploy
         run: |
           cp ../.env.example ../.env
-          docker compose config >/dev/null
+          docker compose --env-file ../.env config >/dev/null
