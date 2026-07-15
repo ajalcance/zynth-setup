@@ -1,0 +1,34 @@
+# Dependabot — automated dependency & GitHub Actions updates (supply-chain hygiene).
+# Targets the repo's default branch. Minor/patch bumps are grouped per ecosystem to
+# cut noise. Directories without a manifest are simply no-ops until they exist.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci"]
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: "/backend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "backend"]
+    groups:
+      backend-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "frontend"]
+    groups:
+      frontend-minor-patch:
+        update-types: ["minor", "patch"]

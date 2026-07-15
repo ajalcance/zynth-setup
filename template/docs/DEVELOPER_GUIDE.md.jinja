@@ -1,0 +1,54 @@
+# Developer Guide
+
+How to set up, run, test, branch, and ship in {{ project_name }}.
+
+## Prerequisites
+
+- Python 3.12+
+- (optional) Docker + Docker Compose for the full stack
+- `pre-commit` (`pip install pre-commit`)
+
+## Set up
+
+```bash
+git clone https://github.com/{{ github_owner }}/{{ github_repo }}.git
+cd {{ github_repo }}
+pre-commit install
+
+cd backend
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+cp ../.env.example ../.env    # fill in local values
+```
+
+## Run
+
+```bash
+uvicorn {{ python_package }}.main:app --reload    # http://localhost:8000
+# health: GET /health ; docs (non-prod): /docs
+```
+
+## Test & gate
+
+```bash
+make backend        # ruff, black, mypy, bandit, pip-audit, pytest
+make check          # full gate
+make dod-check      # doc-consistency guards
+make fmt            # auto-format
+```
+
+## Database & migrations
+
+```bash
+cd backend
+# after adding/altering a model (imported in {{ python_package }}/db/models/__init__.py):
+alembic revision --autogenerate -m "describe change"
+alembic upgrade head
+```
+
+## Branch & ship
+
+- Branch off `develop`: `feat/*`, `fix/*`, `refactor/*`, `docs/*`.
+- Conventional Commit messages; one logical change per commit.
+- Open a PR → CI runs the gate + doc-guards → squash-merge when green.
+- Complete the **Definition of Done** ([`../CLAUDE.md`](../CLAUDE.md) §2) in the same PR.

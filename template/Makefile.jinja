@@ -1,0 +1,68 @@
+# {{ project_name }} — developer command surface.
+# One reliable entry point for the checks the CLAUDE.md Definition of Done requires,
+# so "run all checks" is a single command, not several remembered by hand.
+#
+#   make check        full local gate
+#   make backend      backend gate only (the common per-slice case)
+#   make fmt          auto-format everything
+#   make dod-check    doc-consistency guards (as-built + stale refs)
+#
+# Recipes are single-line && chains (not .ONESHELL) so they work on macOS's
+# GNU Make 3.81 as well as CI's newer make.
+
+.DEFAULT_GOAL := help
+
+.PHONY: help check backend fmt test lint dod-check{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+
+help:
+	@echo "Targets: check | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
+
+# ---- Backend (Python) — uses the repo venv directly, no activation needed ----
+backend:
+	cd backend && \
+	.venv/bin/ruff check . && \
+	.venv/bin/black --check . && \
+	.venv/bin/mypy . && \
+	.venv/bin/bandit -r {{ python_package }} -ll -q && \
+	.venv/bin/pip-audit -r requirements.txt && \
+	.venv/bin/pytest -q
+{% if include_frontend %}
+# ---- Frontend (Next.js) ----
+frontend:
+	cd frontend && \
+	npm run lint && \
+	npx prettier --check . && \
+	npx tsc --noEmit && \
+	npm audit --audit-level=high && \
+	npm run build
+{% endif %}{% if include_docs_site %}
+# ---- Docs site (Next.js) ----
+docs-site:
+	cd docs-site && \
+	npm run lint && \
+	npx prettier --check . && \
+	npm audit --audit-level=high && \
+	npm run build
+{% endif %}
+# Full gate — everything.
+check: backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+
+# Convenience aliases referenced in CLAUDE.md and the PR template.
+test:
+	cd backend && .venv/bin/pytest -q
+
+lint:
+	cd backend && .venv/bin/ruff check . && .venv/bin/black --check . && .venv/bin/mypy .
+
+fmt:
+	cd backend && .venv/bin/ruff check --fix . && .venv/bin/black .
+{%- if include_frontend %}
+	cd frontend && npx prettier --write . >/dev/null
+{%- endif %}
+{%- if include_docs_site %}
+	cd docs-site && npx prettier --write . >/dev/null
+{%- endif %}
+
+# Documentation consistency guards.
+dod-check:
+	python3 scripts/dod-check.py

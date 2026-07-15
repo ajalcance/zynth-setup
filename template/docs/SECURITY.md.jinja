@@ -1,0 +1,30 @@
+# Security (posture & practices)
+
+_This is the engineering security posture. For **reporting a vulnerability**, see
+[`../.github/SECURITY.md`](../.github/SECURITY.md)._
+
+## Secrets & keys
+
+- **Never in git.** Only `.env.example` (placeholders) is committed. Real values live in a local
+  `.env` (gitignored) or the deployment's secret store. `*.pem` / `*.key` are gitignored.
+- **Defence in depth:** `.gitignore` → gitleaks (pre-commit + CI) → `detect-private-key` hook.
+
+## Fail closed
+
+Outside `development` the config validator **requires** real secrets and raises if any are
+missing (`{{ python_package }}/config.py`). Missing config / ambiguous auth → deny.
+
+## Supply chain
+
+- Dependencies are pinned; **Dependabot** proposes grouped updates.
+- CI audits dependencies (`pip-audit`, `npm audit`) and scans code (**Semgrep** dangerous-ops +
+  community rules; **bandit**).
+
+## Runtime hardening
+
+- Containers run as a **non-root** user.
+- Least privilege for the app's DB role; back up before destructive migrations.
+
+## Any security-relevant change
+
+Note it here and tag the commit `security:`.

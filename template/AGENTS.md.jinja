@@ -1,0 +1,13 @@
+# AGENTS.md
+
+This project's working contract for AI coding agents is **[`CLAUDE.md`](CLAUDE.md)** — read it
+first and follow it without exception. This file exists so tools that look for `AGENTS.md` find
+the same rules.
+
+Key points (full detail in `CLAUDE.md`):
+
+- **Secrets & keys never enter git.** Fail closed. Never weaken security to make something work.
+- **After every change:** `make check` green, then update `docs/PLAN.md`, `docs/LESSONS.md`,
+  `docs/architecture/current-state.md`, add an ADR for new decisions, and `CHANGELOG.md`.
+- **Standards:** files ≤ 400 lines, thin routers, type everything, tests for every behaviour.
+- **Conventional Commits**, PRs only, `make dod-check` must pass.

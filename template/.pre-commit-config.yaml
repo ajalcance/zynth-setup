@@ -1,0 +1,28 @@
+# Pre-commit hooks — catch problems BEFORE they enter a commit.
+# Setup (once):  pip install pre-commit && pre-commit install
+# Run manually:  pre-commit run --all-files
+#
+# Secret scanning and hygiene run from day one. Add ruff/black/mypy and JS hooks
+# as the corresponding code grows (or rely on `make check` + CI).
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: detect-private-key   # blocks committing PEM private keys
+      - id: mixed-line-ending
+        args: ["--fix=lf"]

@@ -1,0 +1,38 @@
+# {{ project_name }} — Architecture (Target Design)
+
+The **design intent** — how the system is meant to work. The **as-built** reality lives in
+[`architecture/current-state.md`](architecture/current-state.md); where today diverges from this
+blueprint, that page records it.
+
+## 1. Overview
+
+{{ project_description or "Describe the system, its users, and its core responsibilities." }}
+
+## 2. Principles
+
+- **Fail closed** — deny on missing config / ambiguous auth; never degrade to insecure.
+- **Secrets never in git** — only `.env.example` placeholders are committed.
+- **Thin routers, logic in services** — one router per resource; business logic in `services/`.
+- **Type everything; test every behaviour.**
+
+## 3. High-level components
+
+- **Backend** (`backend/{{ python_package }}/`) — FastAPI app: config, logging, routers, services, DB layer.
+{% if include_frontend %}- **Frontend** (`frontend/`) — Next.js UI.
+{% endif %}{% if include_docs_site %}- **Docs site** (`docs-site/`) — published documentation.
+{% endif %}{% if include_deploy %}- **Deploy** (`deploy/`) — Docker Compose + Caddy.
+{% endif %}{% if include_compliance_spine %}- **Spine** — telemetry → detection → hash-chained audit → compliance coverage-guards.
+{% endif %}
+
+## 4. Data model
+
+<Describe the core entities and their relationships.>
+
+## 5. Security model
+
+See [`SECURITY.md`](SECURITY.md). Summary: fail-closed config, non-root containers, secret
+scanning + SAST in CI, dependency auditing.
+
+## 6. Decisions
+
+Architectural decisions are recorded as ADRs in [`decisions/`](decisions/).

@@ -1,0 +1,8 @@
+# Template-repo hygiene (the generated project ships its own .gitignore).
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+# Copier scratch / local test renders
+/.copier-test/
+/_render/

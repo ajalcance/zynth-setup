@@ -1,0 +1,44 @@
+# {{ project_name }} — Current State (As-Built)
+
+_The small, standalone page that says **what actually exists and runs today** — as opposed
+to the **target** design in [`../ARCHITECTURE.md`](../ARCHITECTURE.md)._
+
+> **Kept current every change (CLAUDE.md §2).** A shipped component not reflected here makes
+> the PR incomplete — `scripts/dod-check.py` (CI job `doc-guards`) fails if a `backend/{{ python_package }}/`
+> module or top-level directory isn't named on this page.
+
+_Synced: initial scaffold._
+
+**Status:** fresh project scaffolded from the `zynth-setup` template. Backend skeleton boots
+with a `/health` endpoint; gates (`make check`, `make dod-check`) are green.
+
+## Actual repository layout
+
+```
+backend/                    FastAPI backend (Python 3.12)
+  {{ python_package }}/
+    main.py                 app factory; /health + / (system endpoints)
+    config.py               Pydantic settings, fail-closed outside dev
+    logger.py               structured JSON logging
+    db/                     SQLAlchemy base + async engine/session + models package
+  migrations/               Alembic (async env)
+  tests/                    pytest (in-memory SQLite) — health smoke tests
+scripts/                    dod-check.py (doc guards)
+docs/                       ARCHITECTURE / PLAN / LESSONS / decisions + product/ + internal/
+```
+
+## What's implemented
+
+- **Backend skeleton:** FastAPI app factory, fail-closed config, JSON logging, `/health` + `/`.
+- **Database layer:** SQLAlchemy 2.0 declarative base + async engine/session (`db/`); Alembic ready.
+- **Gates:** ruff / black / mypy --strict / bandit / pip-audit / pytest, pre-commit (gitleaks +
+  private-key detection), Semgrep dangerous-ops, and the doc-consistency guards.
+
+## Where as-built diverges from the target
+
+The blueprint ([`../ARCHITECTURE.md`](../ARCHITECTURE.md)) describes the intended system. Today
+this is only the starter skeleton — build features one reviewed slice per PR and keep this page true.
+
+## ADRs governing the as-built system
+
+0001 (record ADRs) · 0002 (defense-in-depth against malicious code) · 0003 (monorepo layout & backend skeleton).

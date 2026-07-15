@@ -1,0 +1,189 @@
+# ==============================================================================
+# CI — quality + security gate
+# ==============================================================================
+# Runs on every PR and on pushes to develop/main. Path-filtered so a docs-only
+# change doesn't run backend/frontend suites; jobs skip when their paths are absent.
+#
+# HARDENING TODO: pin these action version tags to full commit SHAs with a tool
+# (pinact/ratchet). Dependabot (github-actions) keeps them current once pinned.
+# ==============================================================================
+
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ---- Detect which parts of the repo changed -----------------------------
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      docs: ${{ steps.filter.outputs.docs }}
+      code: ${{ steps.filter.outputs.code }}
+      changelog: ${{ steps.filter.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            docs:
+              - 'docs-site/**'
+              - 'docs/product/**'
+              - 'docs/internal/**'
+            code:
+              - 'backend/**'
+              - 'frontend/src/**'
+            changelog:
+              - 'CHANGELOG.md'
+
+  # ---- Secret + hygiene scanning (always) ---------------------------------
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run pre-commit hooks (gitleaks, detect-private-key, hygiene)
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files --show-diff-on-failure
+
+  # ---- SAST: dangerous-ops ruleset + Semgrep security audit (always) ------
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Dangerous-operations ruleset (Layer 1 — BLOCKING)
+        run: semgrep scan --config .semgrep/dangerous-ops.yml --error --metrics=off
+      - name: Semgrep security audit (community rules — advisory)
+        run: semgrep scan --config "p/security-audit" --config "p/secrets" --metrics=off || true
+
+  # ---- Backend: lint + type + test + Bandit (only if backend/ changed) ----
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Format check (black)
+        run: black --check .
+      - name: Type check (mypy)
+        run: mypy .
+      - name: Security (bandit)
+        run: bandit -r . -ll -x tests
+      - name: Supply-chain audit (pip-audit)
+        run: pip-audit -r requirements.txt
+      - name: Tests (pytest)
+        run: pytest -q
+
+  # ---- Frontend: lint + type + test (only if frontend/ changed) -----------
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint (eslint)
+        run: npm run lint
+      - name: Format check (prettier)
+        run: npx prettier --check .
+      - name: Type check (tsc)
+        run: npx tsc --noEmit
+      - name: Supply-chain audit (npm audit)
+        run: npm audit --audit-level=high
+      - name: Tests
+        run: npm test --if-present
+
+  # ---- Docs site: lint + build (only if docs-site/ or docs content changed) ----
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint (eslint)
+        run: npm run lint
+      - name: Build
+        run: npm run build
+
+  # ---- Doc-consistency guards (always; blocking) --------------------------
+  doc-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: As-built + stale-reference guards
+        run: python3 scripts/dod-check.py
+
+  # ---- Docs-sync nudge (advisory) -----------------------------------------
+  docs-sync:
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.code == 'true' &&
+      needs.changes.outputs.changelog != 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Nudge — code changed without a CHANGELOG entry
+        run: |
+          echo "::warning title=Docs-sync::Code changed but CHANGELOG.md was not updated. Add an entry under [Unreleased], or label this PR 'no-changelog' if intentional."

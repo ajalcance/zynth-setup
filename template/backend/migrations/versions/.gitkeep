@@ -1,0 +1,2 @@
+# Alembic revision scripts live here. Generate the first one once you add a model:
+#   cd backend && alembic revision --autogenerate -m "initial schema"

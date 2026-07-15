@@ -1,0 +1,53 @@
+"""{{ project_name }} backend — FastAPI application entrypoint.
+
+Minimal foundation: system endpoints only. Feature routers are mounted here as they
+are built (one module per PR), keeping this file thin.
+"""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from {{ python_package }} import __version__
+from {{ python_package }}.config import get_settings
+from {{ python_package }}.logger import logger, setup_logging
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Application startup/shutdown lifecycle."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+    logger.info("{{ project_slug }} starting (env=%s, version=%s)", settings.environment.value, __version__)
+    yield
+    logger.info("{{ project_slug }} shutting down")
+
+
+def create_app() -> FastAPI:
+    """Build and configure the FastAPI application."""
+    settings = get_settings()
+    app = FastAPI(
+        title="{{ project_name }}",
+        version=__version__,
+        docs_url=None if settings.is_production else "/docs",
+        redoc_url=None,
+        lifespan=lifespan,
+    )
+
+    @app.get("/health", tags=["system"])
+    async def health() -> dict[str, str]:
+        """Liveness/readiness probe."""
+        return {"status": "ok", "version": __version__}
+
+    @app.get("/", tags=["system"])
+    async def root() -> dict[str, str]:
+        """Service banner."""
+        return {"service": "{{ project_slug }}", "version": __version__}
+
+    return app
+
+
+app = create_app()

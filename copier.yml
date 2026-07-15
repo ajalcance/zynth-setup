@@ -1,0 +1,103 @@
+# =============================================================================
+# zynth-setup — Copier template for a new enterprise-grade project.
+#
+#   copier copy gh:{{ '{{' }} github_owner {{ '}}' }}/zynth-setup my-new-project
+#
+# Stamps out a project with the full framework already wired: CLAUDE.md working
+# contract, docs-as-code system, CI/CD + security gates, pre-commit hooks, and a
+# fail-closed backend skeleton whose gates are green on day one.
+# =============================================================================
+
+_min_copier_version: "9.0.0"
+_subdirectory: template
+_templates_suffix: .jinja
+_answers_file: .copier-answers.yml
+
+# Keep the generated project clean: never copy template-repo meta files.
+_exclude:
+  - copier.yml
+  - "~*"
+  - "*.pyc"
+  - __pycache__
+  - ".git"
+  - ".venv"
+
+# --- Identity -----------------------------------------------------------------
+project_name:
+  type: str
+  help: Human-readable project name (e.g. "Acme Auth")
+
+project_slug:
+  type: str
+  help: Repo / directory slug (kebab-case)
+  default: "{{ project_name | lower | replace(' ', '-') | replace('_', '-') }}"
+
+python_package:
+  type: str
+  help: Python package name under backend/ (snake_case, e.g. "app")
+  default: app
+
+project_description:
+  type: str
+  help: One-line description
+  default: ""
+
+# --- Ownership ----------------------------------------------------------------
+github_owner:
+  type: str
+  help: GitHub org or user that will own the repo
+
+github_repo:
+  type: str
+  help: Repository name on GitHub
+  default: "{{ project_slug }}"
+
+author_name:
+  type: str
+  help: Primary author / maintainer name
+  default: ""
+
+author_email:
+  type: str
+  help: Contact email (used in SECURITY.md / CODE_OF_CONDUCT.md)
+  default: ""
+
+license:
+  type: str
+  help: License for the generated project
+  choices:
+    - Apache-2.0
+    - MIT
+  default: Apache-2.0
+
+initial_version:
+  type: str
+  help: Starting version
+  default: "0.1.0"
+
+# --- Optional stack modules (payloads land in template Phases B/C) ------------
+include_frontend:
+  type: bool
+  help: Include a Next.js frontend? (Phase B)
+  default: false
+
+include_docs_site:
+  type: bool
+  help: Include the dual-audience docs site? (Phase B)
+  default: false
+
+include_deploy:
+  type: bool
+  help: Include the Docker Compose + Caddy deploy stack? (Phase B)
+  default: false
+
+server_host:
+  type: str
+  help: Deploy target host (IP or domain) — used in deploy docs/config
+  default: ""
+  when: "{{ include_deploy }}"
+
+include_compliance_spine:
+  type: bool
+  help: Include the telemetry → audit → compliance coverage-guard spine? (Phase C)
+  default: false

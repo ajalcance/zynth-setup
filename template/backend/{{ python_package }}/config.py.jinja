@@ -1,0 +1,58 @@
+"""Application settings.
+
+Settings load from environment variables / ``.env``. Secrets default to empty and
+the app **fails closed**: outside ``development`` the validator *requires* real secrets
+and raises if any are missing — there is no insecure fallback.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from functools import lru_cache
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Environment(StrEnum):
+    """Deployment environment."""
+
+    DEVELOPMENT = "development"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+
+class Settings(BaseSettings):
+    """Application configuration."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    environment: Environment = Environment.DEVELOPMENT
+    log_level: str = "info"
+
+    # --- Secrets (required outside development — fail closed) ---
+    secret_key: str = ""
+    database_url: str = ""
+
+    @property
+    def is_production(self) -> bool:
+        """Whether the app is running in the production environment."""
+        return self.environment is Environment.PRODUCTION
+
+    @model_validator(mode="after")
+    def _require_config_outside_dev(self) -> Settings:
+        """Fail closed: required secrets/config must be present outside development."""
+        if self.environment is not Environment.DEVELOPMENT:
+            required = ("secret_key", "database_url")
+            missing = [name for name in required if not getattr(self, name)]
+            if missing:
+                raise ValueError(
+                    f"Missing required config in {self.environment.value}: " + ", ".join(missing)
+                )
+        return self
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return cached application settings."""
+    return Settings()

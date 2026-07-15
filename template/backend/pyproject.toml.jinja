@@ -1,0 +1,36 @@
+# Backend tool configuration (ruff, black, mypy, pytest).
+# Dependencies are managed via requirements*.txt (see CI).
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F pycodestyle+pyflakes, I import sorting, B bugbear, UP pyupgrade,
+# N naming, S flake8-bandit, C90 mccabe complexity.
+select = ["E", "F", "I", "B", "UP", "N", "S", "C90"]
+ignore = ["B008"]  # FastAPI intentionally calls Depends()/Security() in arg defaults
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106", "S107"]  # asserts + dummy secrets in tests
+"migrations/versions/*" = ["N999"]  # revision filenames are hash-prefixed, not module names
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+exclude = ["^migrations/versions/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]
+asyncio_mode = "auto"

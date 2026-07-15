@@ -1,0 +1,112 @@
+# CLAUDE.md — Working Contract for {{ project_name }}
+
+This file is the contract every AI assistant (and human) follows when working in this repo.
+Claude Code reads it automatically each session. **Follow it without exception.**
+
+> Companion file: [`AGENTS.md`](AGENTS.md) mirrors this for other AI coding tools.
+
+---
+
+## 0. What this project is (context)
+
+{{ project_description or project_name + " — describe the project here." }}
+Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Roadmap: [`docs/PLAN.md`](docs/PLAN.md).
+
+---
+
+## 1. 🔴 The non-negotiables
+
+1. **Secrets & keys NEVER enter git.** No `.env`, no `*.pem`, no tokens or passwords in code
+   or commits. Only `.env.example` (placeholders) is committed. If you need a secret, reference
+   an env var.
+2. **Fail closed.** Missing key/config, unreachable dependency, ambiguous auth → deny, never
+   degrade to insecure. Outside `development` the config validator *requires* real secrets and
+   raises if any are missing — no insecure fallback.
+3. **Never weaken security to make something work.** If auth/validation blocks you, fix the
+   integration — don't disable checks, widen CORS to `*`, or skip verification.
+4. **Reuse over rewrite.** Prefer keeping/adapting existing code over rewriting.
+
+---
+
+## 2. 🟢 The after-every-change ritual (Definition of Done)
+
+**Nothing is "done" until the docs reflect it.** After any meaningful change:
+
+1. ✅ Code compiles / tests pass (`make check` or the relevant runner).
+2. ✅ Update **[`docs/PLAN.md`](docs/PLAN.md)** — move the item's status; add follow-ups found.
+3. ✅ Append a dated entry to **[`docs/LESSONS.md`](docs/LESSONS.md)** — what changed, what you
+   learned, any gotcha. One short entry; always dated.
+4. ✅ **Keep the as-built page true:** [`docs/architecture/current-state.md`](docs/architecture/current-state.md).
+   If the change adds/moves/removes a module, route, stored shape, dependency, or the deploy
+   shape → update it in the same PR. (`make dod-check` / CI `doc-guards` enforces that every
+   `backend/{{ python_package }}/` module + top-level dir is named there.)
+   - **New design decision** (not just implementing an already-decided plan) → add an **ADR** in
+     [`docs/decisions/`](docs/decisions/) (next number, template) and reconcile
+     [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+{% if include_compliance_spine %}5. ✅ **Coverage — telemetry + detection + audit + compliance** — every new/changed action must
+   **emit** an envelope event, have a **detection decision**, an **audit decision**, and a
+   **compliance decision** (all backend-gate-enforced). See the spine's coverage guards.
+6. ✅ Update **[`CHANGELOG.md`](CHANGELOG.md)** under `## [Unreleased]`.
+7. ✅ Commit with a **Conventional Commit** message (see §5).{% else %}5. ✅ Update **[`CHANGELOG.md`](CHANGELOG.md)** under `## [Unreleased]`.
+6. ✅ Commit with a **Conventional Commit** message (see §5).{% endif %}
+
+> This ritual keeps plans, lessons, and architecture in lockstep with the code. Skipping it is a
+> defect, not a shortcut.
+
+---
+
+## 3. Enterprise coding standards (summary — full: [`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md))
+
+- **File length:** target ≤ 300 lines, hard cap **400**. Over that → split by concern.
+- **Function length:** ≤ 50 lines. Keep cyclomatic complexity low.
+- **One router per resource.** Handlers are **thin** — business logic in `services/`, data access
+  in the DB layer. No fat controllers.
+- **Type everything** (Python type hints, strict TS). No untyped public functions.
+- **No dead code, no `.bak` files, no commented-out blocks** committed.
+- **Tests** for every new behaviour; security-relevant code requires tests.
+
+---
+
+## 4. How to run / test
+
+```bash
+make check          # full local gate
+make backend        # backend only (ruff, black, mypy, bandit, pip-audit, pytest)
+make fmt            # auto-format
+make dod-check      # doc-consistency guards
+```
+
+`make check` (and CI) is the source of truth. Local dev:
+
+```bash
+cd backend && python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+uvicorn {{ python_package }}.main:app --reload
+```
+
+---
+
+## 5. Git & branching
+
+- **Branches:** `main` (production) · `develop` (integration) · `feat/*`, `fix/*`, `refactor/*`,
+  `docs/*` off `develop`.
+- **Never commit directly to `main`.** PRs only; the PR template enforces the ritual.
+- **Conventional Commits:** `type(scope): summary` — types: `feat`, `fix`, `refactor`, `docs`,
+  `test`, `chore`, `security`, `perf`.
+- Keep commits focused: one logical change each.
+
+---
+
+## 6. Security workflow
+
+- Run `gitleaks detect` / pre-commit before pushing (hooks do this automatically).
+- Any security-relevant change → note it in [`docs/SECURITY.md`](docs/SECURITY.md) and tag the
+  commit `security:`.
+
+---
+
+## 7. When in doubt
+
+- **Going long / getting complex?** Stop and split — new file, new module, new ADR.
+- **Unsure of a decision?** Write an ADR proposing it rather than deciding silently.
+- **Proactively recommend the professional approach** even if not asked.

@@ -1,0 +1,37 @@
+# {{ project_name }} — Plan / Roadmap
+
+The phased roadmap + live status of *what's next*. Read **Where we are** for the actual order.
+
+## Where we are
+
+Fresh scaffold from the `zynth-setup` template. The backend skeleton boots (`/health`), the gates
+are green, and the docs system is wired.
+
+### 🟢 Done
+
+- Project scaffold: backend skeleton, CI/CD + security gates, pre-commit hooks, docs-as-code.
+
+### 🟨 Up next
+
+- Define the domain: models, migrations, first feature slice.
+- Fill in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) with the target design.
+
+---
+
+## Phase 0 — Foundation & setup
+
+- ✅ Repo scaffolding (CLAUDE.md, docs, CI hygiene, ADRs)
+- ✅ Backend skeleton (FastAPI app factory, fail-closed config, DB layer, tests)
+- ⬜ First domain model + migration
+- ⬜ First feature slice (router → service → tests)
+
+## Phase 1 — <your first milestone>
+
+- ⬜ …
+
+---
+
+## Definition of Done (see [`../CLAUDE.md`](../CLAUDE.md) §2)
+
+Every meaningful change updates: this plan, `LESSONS.md`, `architecture/current-state.md`, an ADR
+if the decision is new, `CHANGELOG.md`, and ships behind green `make check`.

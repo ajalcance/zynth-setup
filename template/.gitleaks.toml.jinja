@@ -1,0 +1,21 @@
+# Gitleaks config — scans commits for secrets before they reach the repo.
+# Run locally: gitleaks detect --source . --config .gitleaks.toml
+# Also runs in pre-commit and CI. This is the second line of defence after .gitignore.
+
+title = "{{ project_name }} gitleaks config"
+
+[extend]
+useDefault = true   # inherit gitleaks' built-in rules (AWS keys, tokens, PEMs, etc.)
+
+[allowlist]
+description = "Allow placeholder values in templates and docs"
+paths = [
+  '''\.env\.example$''',
+  '''docs/.*\.md$''',
+]
+regexes = [
+  '''CHANGE_ME.*''',
+  '''openssl rand''',
+  '''placeholder''',
+  '''example\.com''',
+]

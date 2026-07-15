@@ -1,0 +1,33 @@
+# Contributing to {{ project_name }}
+
+Thanks for contributing! This project holds a high bar for quality and security — the gates make
+it easy to meet.
+
+## Before you start
+
+Read **[`CLAUDE.md`](CLAUDE.md)** (the working contract), **[`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md)**,
+and **[`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md)**.
+
+## Workflow
+
+1. Branch off `develop`: `feat/*`, `fix/*`, `refactor/*`, `docs/*`.
+2. Make one logical change. Keep files ≤ 400 lines, routers thin, everything typed and tested.
+3. Run the gate locally: `make check && make dod-check`.
+4. Complete the **Definition of Done** ([`CLAUDE.md`](CLAUDE.md) §2): update `docs/PLAN.md`,
+   `docs/LESSONS.md`, `docs/architecture/current-state.md`, an ADR if the decision is new, and
+   `CHANGELOG.md`.
+5. Open a PR (the template lists the checklist). CI must be green; a maintainer reviews.
+
+## Commit messages
+
+**Conventional Commits:** `type(scope): summary` — `feat`, `fix`, `refactor`, `docs`, `test`,
+`chore`, `security`, `perf`.
+
+## Security & secrets
+
+Never commit secrets or keys. Report vulnerabilities privately — see
+[`.github/SECURITY.md`](.github/SECURITY.md).
+
+## Code of Conduct
+
+Participation is governed by our [Code of Conduct](CODE_OF_CONDUCT.md).
