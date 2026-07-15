@@ -89,4 +89,6 @@ jobs:
       - name: Deploy compose validates
         if: matrix.name == 'full'
         working-directory: /tmp/gen/deploy
-        run: POSTGRES_USER=u POSTGRES_PASSWORD=p POSTGRES_DB=d docker compose config >/dev/null
+        run: |
+          cp ../.env.example ../.env
+          docker compose config >/dev/null
