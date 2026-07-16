@@ -102,6 +102,15 @@ include_compliance_spine:
   help: Include the telemetry → audit → compliance coverage-guard spine? (Phase C)
   default: false
 
+# --- Local agent ergonomics ---------------------------------------------------
+include_claude_hooks:
+  type: bool
+  help: >-
+    Include Claude Code session hooks (.claude/settings.json)? Local ergonomics
+    that shift the CI guards left — auto-format backend Python on write, and
+    block footguns / secret writes. CI remains the fail-closed backstop.
+  default: true
+
 # --- Post-generation setup (runs only with `copier copy --trust`) -------------
 # Tasks execute shell commands, so Copier gates them behind --trust. The Python
 # setup is best-effort (|| echo) so a fresh generation never hard-fails offline.

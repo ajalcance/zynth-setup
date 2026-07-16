@@ -34,7 +34,8 @@ backend/                    FastAPI backend (Python 3.12)
 {% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · bootstrap-repo.sh
 docs/                       ARCHITECTURE / PLAN / LESSONS / decisions
 .devcontainer/              sandboxed dev image + default-deny egress firewall
-```
+{% if include_claude_hooks %}.claude/hooks/              local Claude Code hooks: auto-format + footgun/secret blockers (ergonomics)
+{% endif %}```
 
 ## What's implemented
 
@@ -42,6 +43,10 @@ docs/                       ARCHITECTURE / PLAN / LESSONS / decisions
 - **Database layer:** SQLAlchemy 2.0 declarative base + async engine/session (`db/`); Alembic ready.
 - **Gates:** ruff / black / mypy --strict / bandit / pip-audit / pytest, pre-commit (gitleaks +
   private-key detection), Semgrep dangerous-ops, and the doc-consistency guards.
+{% if include_claude_hooks %}- **Local agent ergonomics:** Claude Code session hooks (`.claude/settings.json`) auto-format
+  backend Python on write and block footguns (direct push to `main`, `--no-verify`, dangerous
+  `rm -rf`) and secret writes. These shift the CI guards left; **CI stays the fail-closed backstop.**
+{% endif %}
 {% if include_compliance_spine %}- **Compliance/observability spine:** fail-open telemetry (`telemetry/`) → Redis stream → cold
   store (`command/` `events`) → hash-chained tamper-evident `audit_log`, plus detection-rule and
   compliance-control catalogs. **Four CI coverage-guards** enforce that every emitted action is

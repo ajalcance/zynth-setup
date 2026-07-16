@@ -20,7 +20,26 @@ exfiltrate. The firewall verifies itself at start and refuses to come up open (f
 the allow-list in that script for hosts your project legitimately needs. **Never put production
 credentials in the dev environment** — use throwaway/dev values in `.env`.
 
-## 2. Apply the branch ruleset (required)
+{% if include_claude_hooks %}## 1c. Local agent ergonomics — Claude Code hooks
+
+`.claude/settings.json` wires three **session hooks** (they run automatically in Claude Code — no
+install step):
+
+- **Auto-format** — after the agent edits a `backend/` Python file, `ruff --fix` + `black` run on it
+  (uses `backend/.venv`; skips silently if absent). Fails **open**.
+- **Footgun blocker** — a `Bash` call that pushes directly to `main`, force-pushes a protected branch,
+  uses `--no-verify`, or `rm -rf`s a dangerous root is blocked with an explanation.
+- **Secret-write blocker** — writing a real `.env`, a `*.pem`/`*.key`, or a file containing a PRIVATE
+  KEY block is blocked.
+
+> **These are ergonomics, not security.** They shift the existing guards left for a tighter loop; they
+> run only in Claude Code, on your machine. **CI, the branch ruleset, and pre-commit remain the
+> fail-closed backstop** — the same rules are enforced server-side where an agent can't bypass them.
+
+To disable, delete `.claude/settings.json` (or generate with `include_claude_hooks=false`). The
+scripts live in `.claude/hooks/`.
+
+{% endif %}## 2. Apply the branch ruleset (required)
 
 Makes passing CI + code-owner review a *repo setting*, not a file an agent can rewrite:
 

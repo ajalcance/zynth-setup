@@ -102,6 +102,10 @@ uvicorn {{ python_package }}.main:app --reload
 - Run `gitleaks detect` / pre-commit before pushing (hooks do this automatically).
 - Any security-relevant change → note it in [`docs/SECURITY.md`](docs/SECURITY.md) and tag the
   commit `security:`.
+{% if include_claude_hooks %}- **Local Claude Code hooks** (`.claude/settings.json`) auto-format backend Python and block footguns
+  (direct push to `main`, `--no-verify`, dangerous `rm -rf`) and secret writes. These are *ergonomics*
+  that shift the guards left — **CI and the branch ruleset are the real, fail-closed enforcement.**
+{% endif %}
 
 ---
 
