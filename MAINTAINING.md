@@ -71,3 +71,14 @@ Tag template releases so projects can pin/update to a known version.
   + `_message_after_copy`, and a **CI self-test** (`.github/workflows/template-test.yml`) that
   generates minimal **and** full projects and runs their gates on every change. **Note:** because
   the template has tasks, generation requires `copier copy --trust` (Copier's safety model).
+- 🚧 **Phase E** — agent-resistant guardrails (ADR-0004), for the "AI writes & deploys, no human
+  reviews the diff" workflow. Every item stays green-on-day-one and is proven to fail-closed:
+  - ✅ **E1** — enforcement outside the repo: branch ruleset (`template/.github/rulesets/main.json` +
+    `scripts/bootstrap-repo.sh`), a `ci-complete` required-check aggregator, and a scoped
+    `CODEOWNERS` (review the guardrails, trust the features). One-time setup in `ONBOARDING.md`.
+  - ⬜ **E2** — erosion watch: OSSF Scorecard (curated gating subset) + a meta-guard (suppression /
+    `EXEMPT`-list growth, workflow-change detection) + coverage threshold & code-without-test gate.
+  - ⬜ **E3** — dependency integrity: Socket.dev (block mode) + lockfile-hash enforcement.
+  - ⬜ **E4** — artifact integrity: cosign keyless sign + SLSA provenance; deploy verifies by digest.
+  - ⬜ **E5** — runtime containment for the dev agent + an auth scaffold that populates the spine's
+    actor/principal.

@@ -36,6 +36,9 @@ uvicorn {{ python_package }}.main:app --reload    # http://localhost:8000/health
 cd .. && make check && make dod-check             # the full gate
 ```
 
+Then do the one-time repo hardening in **[`ONBOARDING.md`](ONBOARDING.md)** (applies the branch
+ruleset so the guardrails can't be edited away — see [`docs/decisions/0004-agent-resistant-guardrails.md`](docs/decisions/0004-agent-resistant-guardrails.md)).
+
 ## Tech stack
 
 - **Backend:** Python 3.12 · FastAPI · SQLAlchemy 2.0 (async) · Alembic

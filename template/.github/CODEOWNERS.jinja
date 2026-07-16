@@ -1,3 +1,36 @@
-# Default owners for everything in this repo (require review on PRs).
-# See https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-*       @{{ github_owner }}
+# CODEOWNERS — "review the meta, trust the features" (see docs/decisions/0004).
+#
+# In this AI-assisted workflow the agent writes feature code without a required human review.
+# These entries require a HUMAN code-owner approval ONLY for changes to the GUARDRAILS themselves —
+# CI, security rules, coverage guards, dependency manifests, and this file. Everything else
+# (backend/{{ python_package }}, frontend, docs) ships without a required review.
+#
+# Enforced by the branch ruleset (.github/rulesets/main.json, "require code owner review"), applied
+# with scripts/bootstrap-repo.sh. To require review on ALL changes instead, uncomment the catch-all.
+# *                            @{{ github_owner }}
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# --- CI, security policy, and repo meta ---
+/.github/                      @{{ github_owner }}
+/.semgrep/                     @{{ github_owner }}
+/.gitleaks.toml                @{{ github_owner }}
+/.pre-commit-config.yaml       @{{ github_owner }}
+
+# --- Doc-consistency + repo-hardening guards ---
+/scripts/                      @{{ github_owner }}
+
+# --- Dependency manifests (supply-chain surface) ---
+/backend/pyproject.toml        @{{ github_owner }}
+/backend/requirements.txt      @{{ github_owner }}
+/backend/requirements-dev.txt  @{{ github_owner }}
+{% if include_frontend %}/frontend/package.json          @{{ github_owner }}
+/frontend/package-lock.json     @{{ github_owner }}
+{% endif %}{% if include_docs_site %}/docs-site/package.json         @{{ github_owner }}
+/docs-site/package-lock.json    @{{ github_owner }}
+{% endif %}{% if include_compliance_spine %}
+# --- Compliance-spine decision lists (the four coverage guards read these) ---
+/backend/{{ python_package }}/telemetry/registry.py  @{{ github_owner }}
+/backend/{{ python_package }}/command/rules.py       @{{ github_owner }}
+/backend/{{ python_package }}/command/controls.py    @{{ github_owner }}
+/backend/{{ python_package }}/command/audit.py       @{{ github_owner }}
+{% endif %}

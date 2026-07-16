@@ -174,6 +174,29 @@ jobs:
       - name: As-built + stale-reference guards
         run: python3 scripts/dod-check.py
 
+  # ---- Required-check aggregator (the one check the branch ruleset requires) ----
+  # Path-filtered jobs (backend/frontend/docs) don't run on every PR, so none of them can be a
+  # required check directly — a required check that never posts blocks the PR forever. This job
+  # always runs, fans in every gate, and passes only if each was 'success' or legitimately
+  # 'skipped'. The branch ruleset (.github/rulesets/main.json) requires *this* context, so the gate
+  # cannot be edited away in-repo. See docs/decisions/0004.
+  ci-complete:
+    needs: [changes, hygiene, sast, backend, frontend, docs, doc-guards]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every gate passed (or was skipped)
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          echo "gate results: $results"
+          for r in $results; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              echo "::error title=CI incomplete::A required gate did not pass ($r). Fix it — do not make it non-required."
+              exit 1
+            fi
+          done
+          echo "All gates green."
+
   # ---- Docs-sync nudge (advisory) -----------------------------------------
   docs-sync:
     needs: changes

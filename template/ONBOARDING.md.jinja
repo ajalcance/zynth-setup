@@ -1,0 +1,49 @@
+# Onboarding — one-time setup for {{ project_name }}
+
+Most of this project is green and hardened the moment it is generated. A few controls live in
+**GitHub repo settings** rather than in files — by design, so an AI agent working in the repo
+cannot edit them away (see [`docs/decisions/0004-agent-resistant-guardrails.md`](docs/decisions/0004-agent-resistant-guardrails.md)).
+This is the short list of switches **you** flip once.
+
+## 1. Push the repo to GitHub
+
+```bash
+gh repo create {{ github_owner }}/{{ github_repo }} --private --source . --push
+```
+
+## 2. Apply the branch ruleset (required)
+
+Makes passing CI + code-owner review a *repo setting*, not a file an agent can rewrite:
+
+```bash
+gh auth login                 # needs 'repo' scope + admin on this repo
+./scripts/bootstrap-repo.sh   # applies .github/rulesets/main.json (idempotent)
+```
+
+After the first PR runs CI once, the `ci-complete` check registers and becomes required. From then
+on: no merge without green CI, and any change to the guardrails (CI, security rules, dependency
+manifests, spine decision lists — see `.github/CODEOWNERS`) needs a human approval.
+
+> **Solo owner, one identity:** GitHub won't let you approve your own PR. For guardrail changes
+> you'll need a second reviewer, or a deliberate admin merge. Feature PRs are unaffected.
+
+**Prove it fails closed (do this once).** The baseline requires *0* approvals, so feature PRs merge
+without review — but a change to a code-owned guardrail must require your approval. Verify:
+
+```bash
+# On a throwaway branch, edit a guarded file and open a PR:
+git switch -c verify-guard && echo "# test" >> .github/workflows/ci.yml
+git commit -am "test: guard-review enforcement" && gh pr create -f
+gh pr view --json reviewDecision   # expect: REVIEW_REQUIRED (blocked until a code owner approves)
+```
+
+If that PR is *not* blocked, code-owner enforcement isn't active — fix it before trusting the repo.
+(Phase E2 adds a CI-level meta-guard as a second line of defence.)
+
+## Coming with later hardening phases
+
+These are wired in the template as they land; each is one install/toggle here (kept fail-closed):
+
+- **OSSF Scorecard** — scheduled posture check; may need a read-only PAT for the branch-protection check.
+- **Socket.dev** — install the GitHub App on your org and set it to **block** (behavioral supply-chain analysis).
+- **cosign + provenance** — enable a container registry (GHCR) and OIDC so CI can sign the image and deploy can verify it.
