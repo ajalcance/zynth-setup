@@ -1,0 +1,52 @@
+"""Auth scaffold: the request principal is resolved and recorded as the event actor."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from fakeredis.aioredis import FakeRedis
+from httpx import AsyncClient
+
+from {{ python_package }}.auth.principal import issue_token
+from {{ python_package }}.config import get_settings
+
+
+async def _last_event(redis: FakeRedis) -> dict[str, Any]:
+    entries = await redis.xrange(get_settings().telemetry_stream)
+    assert entries, "no telemetry event was emitted"
+    fields = entries[-1][1]
+    assert fields is not None
+    payload: dict[str, Any] = json.loads(fields["e"])
+    return payload
+
+
+async def test_anonymous_request_actor_is_system(
+    client: AsyncClient, fake_redis: FakeRedis
+) -> None:
+    resp = await client.get("/api/v1/example")
+    assert resp.status_code == 200
+    event = await _last_event(fake_redis)
+    assert event["actor"] == {"type": "system", "id": None, "sid": None}
+
+
+async def test_authenticated_request_records_principal(
+    client: AsyncClient, fake_redis: FakeRedis
+) -> None:
+    token = issue_token("user-123", "sess-9")
+    resp = await client.get("/api/v1/example", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    event = await _last_event(fake_redis)
+    assert event["actor"] == {"type": "user", "id": "user-123", "sid": "sess-9"}
+
+
+async def test_forged_token_is_rejected(client: AsyncClient) -> None:
+    resp = await client.get(
+        "/api/v1/example", headers={"Authorization": "Bearer user-123.sess-9.deadbeef"}
+    )
+    assert resp.status_code == 401
+
+
+async def test_malformed_authorization_header_is_rejected(client: AsyncClient) -> None:
+    resp = await client.get("/api/v1/example", headers={"Authorization": "Bearer not-a-token"})
+    assert resp.status_code == 401

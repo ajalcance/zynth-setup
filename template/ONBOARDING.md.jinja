@@ -11,6 +11,15 @@ This is the short list of switches **you** flip once.
 gh repo create {{ github_owner }}/{{ github_repo }} --private --source . --push
 ```
 
+## 1b. Develop in the sandbox (recommended for AI-assisted work)
+
+Open the repo in the **`.devcontainer/`** (VS Code: *Reopen in Container*). It runs a **default-deny
+egress firewall** (`.devcontainer/init-firewall.sh`) so code the agent writes/runs can only reach an
+allow-list (GitHub, package registries, sigstore) — a buggy or prompt-injected dependency can't
+exfiltrate. The firewall verifies itself at start and refuses to come up open (fail-closed). Widen
+the allow-list in that script for hosts your project legitimately needs. **Never put production
+credentials in the dev environment** — use throwaway/dev values in `.env`.
+
 ## 2. Apply the branch ruleset (required)
 
 Makes passing CI + code-owner review a *repo setting*, not a file an agent can rewrite:

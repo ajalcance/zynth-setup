@@ -87,5 +87,7 @@ Tag template releases so projects can pin/update to a known version.
   - ✅ **E4** — artifact integrity: `release.yml` builds on a `v*` tag → pushes to GHCR → **cosign**
     keyless sign + SLSA provenance; the deploy stack pulls signed images (`deploy/verify.sh`
     fail-closed) instead of building on the host, with `docker-compose.override.yml` for local builds.
-  - ⬜ **E5** — runtime containment for the dev agent + an auth scaffold that populates the spine's
-    actor/principal.
+  - ✅ **E5** — runtime containment + auth: a `.devcontainer/` sandbox with a **default-deny egress
+    firewall** (`init-firewall.sh`, self-verifying/fail-closed) so agent-run code can't exfiltrate;
+    and (spine) an **auth scaffold** (`backend/<package>/auth/`, signed bearer token → `Principal`)
+    that records the real actor on every telemetry event — anonymous → `system`, forged token → 401.

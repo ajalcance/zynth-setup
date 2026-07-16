@@ -1,0 +1,11 @@
+{
+  "name": "{{ project_name }} — sandboxed dev",
+  "build": { "dockerfile": "Dockerfile" },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" }
+  },
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "postCreateCommand": "cd backend && python -m venv .venv && . .venv/bin/activate && pip install -q -r requirements.txt -r requirements-dev.txt && pre-commit install",
+  "remoteUser": "vscode"
+}

@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import Depends, Request
 from redis.asyncio import Redis
 
+from {{ python_package }}.auth import ANONYMOUS, Principal, get_principal
 from {{ python_package }}.cache.redis import get_redis
 from {{ python_package }}.config import get_settings
 from {{ python_package }}.telemetry.envelope import client_ip, make_event
@@ -34,18 +35,30 @@ async def emit(redis: Redis, event: dict[str, Any]) -> None:
 
 
 class Telemetry:
-    """Per-request emission helper: binds the request's IP + a Redis client."""
+    """Per-request emission helper: binds the request's IP, principal, and a Redis client."""
 
-    def __init__(self, redis: Redis, ip: str | None) -> None:
+    def __init__(self, redis: Redis, ip: str | None, principal: Principal = ANONYMOUS) -> None:
         self._redis = redis
         self._ip = ip
+        self._principal = principal
 
     async def emit(self, **kwargs: Any) -> None:
-        """Build an envelope (``make_event`` fields) and emit it, fail-open."""
+        """Build an envelope (``make_event`` fields) and emit it, fail-open.
+
+        The acting principal (from the request's bearer token, else anonymous) is recorded as the
+        event actor unless the caller overrides it.
+        """
         kwargs.setdefault("ip", self._ip)
+        kwargs.setdefault("actor_type", self._principal.type)
+        kwargs.setdefault("actor_id", self._principal.id)
+        kwargs.setdefault("sid", self._principal.sid)
         await emit(self._redis, make_event(**kwargs))
 
 
-def get_telemetry(request: Request, redis: Redis = Depends(get_redis)) -> Telemetry:
+def get_telemetry(
+    request: Request,
+    redis: Redis = Depends(get_redis),
+    principal: Principal = Depends(get_principal),
+) -> Telemetry:
     """FastAPI dependency yielding a request-bound telemetry emitter."""
-    return Telemetry(redis, client_ip(request))
+    return Telemetry(redis, client_ip(request), principal)

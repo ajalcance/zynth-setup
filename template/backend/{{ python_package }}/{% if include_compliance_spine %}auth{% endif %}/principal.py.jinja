@@ -1,0 +1,70 @@
+"""Request principal — *who* is acting, so the audit spine records a real actor, not `system`.
+
+A signed bearer token (HMAC-SHA256 over ``sub.sid`` with ``SECRET_KEY``) identifies a user; the
+telemetry envelope then records that principal as the event ``actor``. No token → anonymous
+``system`` actor (public routes still work). A present-but-**invalid** token is rejected with 401 —
+a forged token must never be silently downgraded to anonymous (fail-closed).
+
+This is a scaffold: replace ``_verify`` with your real IdP / session store, keeping the
+``Principal`` shape and the fail-closed behaviour. The four coverage guards are unaffected.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+from dataclasses import dataclass
+
+from fastapi import HTTPException, Request, status
+
+from {{ python_package }}.config import get_settings
+
+ACTOR_SYSTEM = "system"
+ACTOR_USER = "user"
+
+
+@dataclass(frozen=True)
+class Principal:
+    """Who is acting on a request. ``type`` is ``system`` (anonymous) or ``user``."""
+
+    type: str
+    id: str | None = None
+    sid: str | None = None
+
+
+ANONYMOUS = Principal(type=ACTOR_SYSTEM)
+
+
+def _sign(message: str) -> str:
+    key = get_settings().secret_key.encode()
+    return hmac.new(key, message.encode(), hashlib.sha256).hexdigest()
+
+
+def issue_token(sub: str, sid: str) -> str:
+    """Mint a signed token for user ``sub`` in session ``sid``.
+
+    For local/dev and tests — real tokens come from your identity provider.
+    """
+    return f"{sub}.{sid}.{_sign(f'{sub}.{sid}')}"
+
+
+def _verify(token: str) -> Principal | None:
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    sub, sid, sig = parts
+    if not (sub and sid) or not hmac.compare_digest(sig, _sign(f"{sub}.{sid}")):
+        return None
+    return Principal(type=ACTOR_USER, id=sub, sid=sid)
+
+
+def get_principal(request: Request) -> Principal:
+    """FastAPI dependency: resolve the request principal; fail-closed on a bad token."""
+    header = request.headers.get("authorization")
+    if not header:
+        return ANONYMOUS
+    scheme, _, token = header.partition(" ")
+    principal = _verify(token) if scheme.lower() == "bearer" and token else None
+    if principal is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid or missing bearer token")
+    return principal

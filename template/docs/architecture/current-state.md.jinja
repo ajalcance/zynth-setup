@@ -22,6 +22,7 @@ backend/                    FastAPI backend (Python 3.12)
     logger.py               structured JSON logging
     db/                     SQLAlchemy base + async engine/session + models package
 {% if include_compliance_spine %}    api/                    HTTP routers (example instrumented route)
+    auth/                   request principal (signed bearer token) → event actor
     cache/                  async Redis client (fakeredis in tests)
     telemetry/              event envelope, fail-open emitter, coverage registry
     command/                cold store (events) + hash-chained audit_log + detection/control catalogs
@@ -32,6 +33,7 @@ backend/                    FastAPI backend (Python 3.12)
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
 {% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · bootstrap-repo.sh
 docs/                       ARCHITECTURE / PLAN / LESSONS / decisions
+.devcontainer/              sandboxed dev image + default-deny egress firewall
 ```
 
 ## What's implemented
@@ -45,6 +47,8 @@ docs/                       ARCHITECTURE / PLAN / LESSONS / decisions
   compliance-control catalogs. **Four CI coverage-guards** enforce that every emitted action is
   registered for emit + detection + audit + compliance. One example instrumented route
   (`GET /api/v1/example`) demonstrates the pattern; the worker (`command/worker.py`) ingests + seals.
+  A signed bearer token (`auth/`) resolves the request **principal**, recorded as the event actor
+  (anonymous → `system`; a forged token is rejected 401).
 {% endif %}
 
 ## Where as-built diverges from the target
