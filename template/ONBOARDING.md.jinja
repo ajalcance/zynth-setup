@@ -50,9 +50,21 @@ fine-grained PAT (read-only: Administration + Contents + Metadata) as a repo sec
 gh secret set SCORECARD_TOKEN   # paste the PAT
 ```
 
+## 4. Socket.dev — behavioural supply-chain analysis (recommended)
+
+CVE scanners (`pip-audit` / `npm audit`) only know *disclosed* vulnerabilities. Socket flags a
+dependency that *newly* runs install scripts or touches the network/filesystem — the poisoned-update
+/ typosquat vector that has no CVE yet. Deps are already **fully pinned** (`scripts/check_pins.py`
+gate) and installs are deterministic (`==` for Python, `npm ci` + lockfile integrity for JS), so a
+version *bump* is always an explicit, code-owner-reviewed diff; Socket judges whether the new version
+is *safe*.
+
+1. Install the **[Socket GitHub App](https://github.com/apps/socket-security)** on your org/repo and
+   set its policy to **block** (not warn).
+2. Once it posts its first check, add **Socket Security** to the required checks — re-run
+   `./scripts/bootstrap-repo.sh` after adding `{ "context": "Socket Security" }` to the
+   `required_status_checks` in `.github/rulesets/main.json`, or add it in the branch-protection UI.
+
 ## Coming with later hardening phases
 
-Wired in the template as they land; each is one install/toggle here (kept fail-closed):
-
-- **Socket.dev** — install the GitHub App on your org and set it to **block** (behavioral supply-chain analysis).
 - **cosign + provenance** — enable a container registry (GHCR) and OIDC so CI can sign the image and deploy can verify it.

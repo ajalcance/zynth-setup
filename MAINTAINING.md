@@ -80,7 +80,10 @@ Tag template releases so projects can pin/update to a known version.
     subset, PAT-aware) + a meta-guard (`scripts/meta_guard.py` + `pr-policy` job: suppression ratchet
     & code-without-test, both label-escapable) folded into `ci-complete`, a `pytest --cov` floor
     (70%, in pyproject), and all workflow actions SHA-pinned.
-  - ⬜ **E3** — dependency integrity: Socket.dev (block mode) + lockfile-hash enforcement.
+  - ✅ **E3** — dependency integrity: a `deps` pin-guard (`scripts/check_pins.py`, in `ci-complete`)
+    enforces exact pins so no floating spec can drift; JS stays deterministic via `npm ci` +
+    lockfile integrity. Socket.dev (behavioural analysis, block mode) is a one-click App install
+    documented in `ONBOARDING.md` (+ how to make its check required).
   - ⬜ **E4** — artifact integrity: cosign keyless sign + SLSA provenance; deploy verifies by digest.
   - ⬜ **E5** — runtime containment for the dev agent + an auth scaffold that populates the spine's
     actor/principal.
