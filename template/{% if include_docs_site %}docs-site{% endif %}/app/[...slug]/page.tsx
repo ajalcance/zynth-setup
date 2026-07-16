@@ -8,6 +8,10 @@ export function generateStaticParams() {
   return listDocs().map((d) => ({ slug: d.slug }));
 }
 
+// Only slugs from generateStaticParams are served; an unknown path 404s instead
+// of being rendered on demand (which would let a request slug reach the filesystem).
+export const dynamicParams = false;
+
 export default async function DocPage({
   params,
 }: {
