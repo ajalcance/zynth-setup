@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Verify container images before deploying — FAIL-CLOSED. Only images this repo's
+# release workflow built and signed (cosign keyless / OIDC) will pass, so an
+# unsigned or tampered image never runs. See docs/decisions/0004.
+#
+#   ./verify.sh "$BACKEND_IMAGE" ["$FRONTEND_IMAGE" ...]
+#
+# Pass image refs by DIGEST (ghcr.io/owner/repo-backend@sha256:...). The deploy host
+# needs cosign: https://docs.sigstore.dev/cosign/system_config/installation
+# ==============================================================================
+set -euo pipefail
+
+# The signing identity is this repo's release workflow (case-insensitive slug match).
+IDENTITY='(?i)^https://github.com/{{ github_owner }}/{{ github_repo }}/\.github/workflows/release\.yml@refs/'
+ISSUER='https://token.actions.githubusercontent.com'
+
+command -v cosign >/dev/null 2>&1 || {
+  echo "error: cosign not installed — https://docs.sigstore.dev/cosign/system_config/installation" >&2
+  exit 1
+}
+[ "$#" -ge 1 ] || { echo "usage: ./verify.sh <image-ref> [<image-ref> ...]" >&2; exit 1; }
+
+for img in "$@"; do
+  echo "Verifying signature: $img"
+  cosign verify "$img" \
+    --certificate-identity-regexp "$IDENTITY" \
+    --certificate-oidc-issuer "$ISSUER" >/dev/null
+  echo "  ✓ signed by this repo's release workflow"
+done
+
+echo "All images verified. Deploy the base stack (no build override):"
+echo "  docker compose -f docker-compose.yml --env-file ../.env up -d"

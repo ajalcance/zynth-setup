@@ -65,6 +65,16 @@ is *safe*.
    `./scripts/bootstrap-repo.sh` after adding `{ "context": "Socket Security" }` to the
    `required_status_checks` in `.github/rulesets/main.json`, or add it in the branch-protection UI.
 
-## Coming with later hardening phases
+{% if include_deploy %}## 5. Signed deploys (cosign)
 
-- **cosign + provenance** — enable a container registry (GHCR) and OIDC so CI can sign the image and deploy can verify it.
+Nothing to configure for *signing*: `.github/workflows/release.yml` builds on a `v*` tag, signs each
+image **keyless** via GitHub OIDC (no key to manage), pushes to GHCR with the built-in `GITHUB_TOKEN`,
+and attaches SLSA provenance. Two host-side steps:
+
+- Install **cosign** on the deploy host (`deploy/verify.sh` uses it): <https://docs.sigstore.dev/cosign/system_config/installation>.
+- Make the GHCR packages pullable by the host — they inherit repo visibility; for a private repo,
+  `docker login ghcr.io` there with a `read:packages` token.
+
+Then cut a release (`git tag v0.1.0 && git push origin v0.1.0`) and follow `deploy/README.md`
+(**verify signatures → start the base stack**). Pin images by `@sha256:` digest.
+{% endif %}

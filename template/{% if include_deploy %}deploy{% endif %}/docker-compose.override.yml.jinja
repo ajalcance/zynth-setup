@@ -1,0 +1,17 @@
+# LOCAL DEVELOPMENT ONLY — build the images from source instead of pulling the signed
+# registry refs. Docker Compose auto-merges this file, so `docker compose up --build` works
+# for local iteration (tagged as $BACKEND_IMAGE / $FRONTEND_IMAGE from ../.env).
+#
+# PRODUCTION must NOT use this file — deploy only verified, signed images:
+#   ./verify.sh "$BACKEND_IMAGE"{% if include_frontend %} "$FRONTEND_IMAGE"{% endif %}
+#   docker compose -f docker-compose.yml --env-file ../.env up -d
+services:
+  backend:
+    build: ../backend
+  migrate:
+    build: ../backend
+{% if include_compliance_spine %}  worker:
+    build: ../backend
+{% endif %}{% if include_frontend %}  frontend:
+    build: ../frontend
+{% endif %}

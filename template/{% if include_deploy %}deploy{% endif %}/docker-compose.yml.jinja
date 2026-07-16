@@ -1,10 +1,15 @@
 # {{ project_name }} — deployment stack.
 #
-# Run from this directory on the server:
+# PRODUCTION pulls the exact images CI built, signed (cosign) and attested — never builds on
+# the host. On the server, from this directory:
+#   ./verify.sh "$BACKEND_IMAGE"{% if include_frontend %} "$FRONTEND_IMAGE"{% endif %}   # fail-closed signature check
+#   docker compose -f docker-compose.yml --env-file ../.env up -d   # base only (no build override)
+#
+# LOCAL dev builds from source instead (docker-compose.override.yml is auto-merged):
 #   docker compose --env-file ../.env up -d --build
 #
-# Secrets come from ../.env (never from this file or the repo). Migrations run as a
-# one-shot `migrate` service (alembic upgrade head) before the backend starts.
+# Set BACKEND_IMAGE{% if include_frontend %}/FRONTEND_IMAGE{% endif %} in ../.env. Secrets come from ../.env (never this file
+# or the repo). Migrations run as a one-shot `migrate` service before the backend starts.
 
 name: {{ project_slug }}
 
@@ -26,8 +31,7 @@ services:
       - no-new-privileges:true
 
   backend:
-    build: ../backend
-    image: {{ project_slug }}-backend:latest
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to the signed image ref — see README.md}
     restart: unless-stopped
     env_file: ../.env
     read_only: true
@@ -55,8 +59,7 @@ services:
 
   # One-shot: applies Alembic migrations, then exits. Backend waits for success.
   migrate:
-    build: ../backend
-    image: {{ project_slug }}-backend:latest
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to the signed image ref — see README.md}
     command: ["alembic", "upgrade", "head"]
     restart: "no"
     env_file: ../.env
@@ -105,8 +108,7 @@ services:
   # Background worker: drains the telemetry stream → cold store, then seals the audit chain.
   # Without it the spine collects nothing, so it ships whenever the spine is enabled.
   worker:
-    build: ../backend
-    image: {{ project_slug }}-backend:latest
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to the signed image ref — see README.md}
     command: ["python", "-m", "{{ python_package }}.command.worker"]
     restart: unless-stopped
     env_file: ../.env
@@ -127,8 +129,7 @@ services:
         condition: service_healthy
 {% endif %}{% if include_frontend %}
   frontend:
-    build: ../frontend
-    image: {{ project_slug }}-frontend:latest
+    image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE to the signed image ref — see README.md}
     restart: unless-stopped
     read_only: true
     tmpfs:

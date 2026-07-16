@@ -91,4 +91,5 @@ jobs:
         working-directory: /tmp/gen/deploy
         run: |
           cp ../.env.example ../.env
-          docker compose --env-file ../.env config >/dev/null
+          docker compose --env-file ../.env config >/dev/null                      # local (build override)
+          docker compose -f docker-compose.yml --env-file ../.env config >/dev/null # prod (signed images only)

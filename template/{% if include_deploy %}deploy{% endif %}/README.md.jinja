@@ -2,28 +2,40 @@
 
 Single-host Docker Compose stack: **Caddy** (TLS + reverse proxy) → **backend**{% if include_frontend %} + **frontend**{% endif %}, with **Postgres**{% if include_compliance_spine %}, **Redis** + a compliance-spine **worker**,{% endif %} and a one-shot **migrate** step.
 
-## First deploy
+## Production: deploy only signed images
+
+Production **never builds on the host** — it runs the exact images CI built, signed (cosign
+keyless) and attested (SLSA provenance) via `.github/workflows/release.yml`. So what runs is
+provably what CI produced, not whatever source happened to be on the box.
 
 ```bash
-# 1. Put real secrets in ../.env (copy from ../.env.example). NEVER commit it.
-cp ../.env.example ../.env && $EDITOR ../.env      # set SECRET_KEY, DATABASE_URL,
-                                                   # POSTGRES_USER/PASSWORD/DB, ENVIRONMENT=production
+# 1. Cut a release — CI builds, pushes to GHCR, signs + attests each image.
+git tag v0.1.0 && git push origin v0.1.0
 
-# 2. Build + start (migrations run automatically before the backend).
-docker compose --env-file ../.env up -d --build
+# 2. On the server: real secrets in ../.env (copy from ../.env.example). NEVER commit it.
+cp ../.env.example ../.env && $EDITOR ../.env   # SECRET_KEY, POSTGRES_*, ENVIRONMENT=production, and
+                                                # BACKEND_IMAGE{% if include_frontend %}/FRONTEND_IMAGE{% endif %}=ghcr.io/...@sha256:<digest>
 
-# 3. Verify.
-docker compose ps
+# 3. Verify the signatures BEFORE running anything (fail-closed).
+./verify.sh "$BACKEND_IMAGE"{% if include_frontend %} "$FRONTEND_IMAGE"{% endif %}
+
+# 4. Start the base stack ONLY (no build override); migrations run before the backend.
+docker compose -f docker-compose.yml --env-file ../.env up -d
+docker compose -f docker-compose.yml ps
 curl -k https://{{ server_host or "<host>" }}/health
 ```
 
-## Update
+Pin `BACKEND_IMAGE`{% if include_frontend %}/`FRONTEND_IMAGE`{% endif %} to the immutable `@sha256:` **digest** (not a moving tag) so a
+re-pushed tag can't swap the artifact under you. `./verify.sh` refuses anything not signed by this
+repo's release workflow.
+
+## Local development
+
+`docker-compose.override.yml` (auto-merged) builds from source instead — no registry needed:
 
 ```bash
-git pull
-docker compose --env-file ../.env up -d --build backend{% if include_frontend %} frontend{% endif %}
-# run migrations if a new one landed:
-docker compose --env-file ../.env run --rm migrate
+cp ../.env.example ../.env            # BACKEND_IMAGE defaults to a local build tag
+docker compose --env-file ../.env up -d --build
 ```
 
 ## Notes

@@ -84,6 +84,8 @@ Tag template releases so projects can pin/update to a known version.
     enforces exact pins so no floating spec can drift; JS stays deterministic via `npm ci` +
     lockfile integrity. Socket.dev (behavioural analysis, block mode) is a one-click App install
     documented in `ONBOARDING.md` (+ how to make its check required).
-  - ⬜ **E4** — artifact integrity: cosign keyless sign + SLSA provenance; deploy verifies by digest.
+  - ✅ **E4** — artifact integrity: `release.yml` builds on a `v*` tag → pushes to GHCR → **cosign**
+    keyless sign + SLSA provenance; the deploy stack pulls signed images (`deploy/verify.sh`
+    fail-closed) instead of building on the host, with `docker-compose.override.yml` for local builds.
   - ⬜ **E5** — runtime containment for the dev agent + an auth scaffold that populates the spine's
     actor/principal.

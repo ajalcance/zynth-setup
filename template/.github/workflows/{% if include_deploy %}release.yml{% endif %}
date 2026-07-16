@@ -1,0 +1,94 @@
+# ==============================================================================
+# Release — build, push, SIGN and ATTEST the deployable images
+# ==============================================================================
+# On a version tag (v*), builds the backend (and frontend if present), pushes to
+# GHCR, signs each image keyless with cosign (GitHub OIDC — no key to manage), and
+# attaches SLSA build provenance. The deploy host verifies these before running
+# anything (deploy/verify.sh), so only the exact CI-built image is deployable.
+# See docs/decisions/0004.
+# ==============================================================================
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+      id-token: write # cosign keyless signing (OIDC)
+      attestations: write # SLSA build provenance
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Registry namespace (GHCR requires lowercase)
+        id: ns
+        run: echo "repo=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # ---- backend (always) ----
+      - name: Build & push backend
+        id: backend
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: backend
+          push: true
+          tags: |
+            ghcr.io/${{ steps.ns.outputs.repo }}-backend:${{ github.ref_name }}
+            ghcr.io/${{ steps.ns.outputs.repo }}-backend:latest
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Sign backend (keyless)
+        run: cosign sign --yes "ghcr.io/${{ steps.ns.outputs.repo }}-backend@${{ steps.backend.outputs.digest }}"
+
+      - name: Attest backend provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ghcr.io/${{ steps.ns.outputs.repo }}-backend
+          subject-digest: ${{ steps.backend.outputs.digest }}
+          push-to-registry: true
+
+      # ---- frontend (only if it exists) ----
+      - name: Detect frontend
+        id: fe
+        run: |
+          if [ -f frontend/Dockerfile ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Build & push frontend
+        id: frontend
+        if: steps.fe.outputs.exists == 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: frontend
+          push: true
+          tags: |
+            ghcr.io/${{ steps.ns.outputs.repo }}-frontend:${{ github.ref_name }}
+            ghcr.io/${{ steps.ns.outputs.repo }}-frontend:latest
+
+      - name: Sign frontend (keyless)
+        if: steps.fe.outputs.exists == 'true'
+        run: cosign sign --yes "ghcr.io/${{ steps.ns.outputs.repo }}-frontend@${{ steps.frontend.outputs.digest }}"
+
+      - name: Attest frontend provenance
+        if: steps.fe.outputs.exists == 'true'
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ghcr.io/${{ steps.ns.outputs.repo }}-frontend
+          subject-digest: ${{ steps.frontend.outputs.digest }}
+          push-to-registry: true
