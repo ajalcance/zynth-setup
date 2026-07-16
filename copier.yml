@@ -78,17 +78,23 @@ initial_version:
 # --- Optional stack modules (payloads land in template Phases B/C) ------------
 include_frontend:
   type: bool
-  help: Include a Next.js frontend? (Phase B)
+  help: >-
+    Include a Next.js frontend (web UI)? Say yes if the service needs a user-facing
+    interface. Adds a JS/TS toolchain + its own CI gate. You can add it later.
   default: false
 
 include_docs_site:
   type: bool
-  help: Include the dual-audience docs site? (Phase B)
+  help: >-
+    Include a published documentation website? Say yes to host human-friendly docs
+    for others. Adds a second Next.js app to maintain. You can add it later.
   default: false
 
 include_deploy:
   type: bool
-  help: Include the Docker Compose + Caddy deploy stack? (Phase B)
+  help: >-
+    Include the deploy stack (Docker Compose + Caddy, signed-image production deploys)?
+    Say yes when you're ready to run this on a real server. You can add it later.
   default: false
 
 server_host:
@@ -99,7 +105,10 @@ server_host:
 
 include_compliance_spine:
   type: bool
-  help: Include the telemetry → audit → compliance coverage-guard spine? (Phase C)
+  help: >-
+    Include the compliance/observability spine (tamper-evident audit log + coverage
+    guards)? Say yes if you must *prove* what the system did — audits or regulated
+    data. Each new action must then satisfy 4 coverage guards. You can add it later.
   default: false
 
 # --- Local agent ergonomics ---------------------------------------------------

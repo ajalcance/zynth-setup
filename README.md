@@ -10,7 +10,24 @@ Stamp out a new repository that ships, on day one, with:
 - **Pre-commit / pre-push gates** — gitleaks, private-key detection, hygiene hooks.
 - **A fail-closed backend skeleton** (FastAPI) whose `make check` is **green out of the box**.
 
-Optional modules (prompted): a Next.js **frontend**, a **docs site**, a **deploy** stack (Docker Compose + Caddy), and a **compliance/observability spine** (telemetry → audit → coverage-guards).
+### Choosing your optional modules
+
+Copier prompts you for these. Defaults are conservative — say yes only to what you need; you can
+add a module later with `copier update`. Each one is independent.
+
+| Module | What it adds | Turn it on when… | It commits you to… |
+|---|---|---|---|
+| **frontend** | A Next.js web UI (`frontend/`) with its own lint/type/build gate | your service needs a user-facing web interface | maintaining JS/TS tooling + its CI gate |
+| **docs site** | A published documentation website (`docs-site/`) | you want human-friendly docs hosted for others | a second Next.js app to keep building |
+| **deploy** | Docker Compose + Caddy stack, and **signed-image** production deploys (cosign) | you're ready to run this on a real server | a deploy target host + the signing/verify flow |
+| **compliance spine** | Tamper-evident audit log + coverage-guards proving every action is recorded, monitored, audited | you must *prove* what the system did (audits, regulated data) | writing each new action to satisfy 4 coverage guards |
+| **Claude hooks** *(on by default)* | Local Claude Code convenience hooks: auto-format + block footguns/secret writes | you use Claude Code and want faster feedback | nothing — pure local ergonomics; CI is unchanged |
+
+Not sure? Start minimal (all off except Claude hooks). The base framework — AI contract, docs
+system, CI/security gates, backend skeleton — is always included. Every generated project also
+ships a plain-language **[`docs/OVERVIEW.md`](template/docs/OVERVIEW.md.jinja)** and
+**[`docs/GLOSSARY.md`](template/docs/GLOSSARY.md)** so a non-technical builder (and their AI
+assistant) can understand what each part does and why.
 
 ## Use it
 

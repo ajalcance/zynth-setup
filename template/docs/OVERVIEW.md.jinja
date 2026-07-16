@@ -1,0 +1,94 @@
+# {{ project_name }} — Start Here (Plain-Language Overview)
+
+_New here — human or AI? Read this first. It explains **what this project is, what each part
+does, and why**, in plain words. No prior knowledge assumed. Terms in **bold** that look like
+jargon are defined in [`GLOSSARY.md`](GLOSSARY.md)._
+
+---
+
+## 1. What this project is
+
+{{ project_description or project_name + " — a backend service." }}
+
+More than that, it's a project built on one core idea:
+
+> **The AI writes and ships most of the code, and a human does not review every line.
+> So the safety rails — not the code — are the real product.**
+
+Everything unusual here exists to make that safe: automatic checks that **fail closed** (when
+in doubt, they stop rather than let something risky through), and rules that an AI assistant
+*cannot quietly switch off* to make its work pass. The full reasoning is written down in
+[`decisions/0004-agent-resistant-guardrails.md`](decisions/0004-agent-resistant-guardrails.md).
+
+**Why this matters to you:** you don't have to personally catch every mistake. If you (or the
+AI) do something unsafe, a check is designed to catch it. Your job is to understand *what the
+checks protect*, so you can make good decisions — not to memorize the code.
+
+---
+
+## 2. What's in here (one line each)
+
+| Folder / file | What it is |
+|---|---|
+| [`CLAUDE.md`](../CLAUDE.md) / [`AGENTS.md`](../AGENTS.md) | The rulebook every AI assistant follows in this repo. Read-only contract. |
+| [`backend/`](../backend) | The actual service (Python / FastAPI). Where features live. |
+| [`docs/`](.) | Everything written down: this overview, the design, decisions, standards, lessons. |
+| [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | The **target** design — what the system is meant to become. |
+| [`docs/architecture/current-state.md`](architecture/current-state.md) | The **as-built** — what actually exists and runs *today*. |
+| [`docs/decisions/`](decisions) | **ADRs** — a dated log of *why* each important choice was made. |
+| [`docs/GLOSSARY.md`](GLOSSARY.md) | Plain-language definitions of the jargon used here. |
+| [`scripts/`](../scripts) | The automated guards (doc checks, dependency checks, repo setup). |
+| [`.github/`](../.github) | The **CI** checks and the branch **ruleset** that enforce the rules on the server. |
+| [`.devcontainer/`](../.devcontainer) | A locked-down sandbox to develop in (blocks unexpected network access). |
+{% if include_claude_hooks %}| [`.claude/`](../.claude) | Local convenience hooks for Claude Code (auto-format, block footguns). |
+{% endif %}{% if include_frontend %}| [`frontend/`](../frontend) | The web UI (Next.js). |
+{% endif %}{% if include_docs_site %}| [`docs-site/`](../docs-site) | A published documentation website. |
+{% endif %}{% if include_deploy %}| [`deploy/`](../deploy) | How the service is packaged and run on a server (Docker + Caddy). |
+{% endif %}
+
+---
+
+## 3. The three rules — and why they exist
+
+These are the non-negotiables from [`CLAUDE.md`](../CLAUDE.md). If you understand nothing else,
+understand these:
+
+1. **Secrets never go into the project's history.** Passwords, keys, and tokens stay out of the
+   code. *Why:* once a secret is committed it's effectively public forever, even if deleted.
+2. **When something is unclear or missing, stop — don't guess around it.** A missing key or an
+   unclear permission makes the system *deny*, not quietly continue in an unsafe way. *Why:* a
+   silent unsafe fallback is how real breaches happen.
+3. **Never weaken a check to make something pass.** If a guard blocks you, fix the underlying
+   problem. *Why:* the guards are the product — disabling one removes the protection you're
+   relying on. (An AI assistant is explicitly instructed to fix the code, not the check.)
+
+---
+
+## 4. Your day-to-day loop
+
+You mostly work through an AI assistant. After any change, the routine is:
+
+```bash
+make check        # runs all the automated checks locally
+make dod-check    # checks the docs still match the code
+```
+
+If those are green and the docs are updated, you're done. The full "**Definition of Done**"
+ritual (what to update after each change) is in [`CLAUDE.md`](../CLAUDE.md) §2 — the AI follows
+it for you, but it's good to know it exists.
+
+To turn the repo's server-side protections on (a one-time step), follow
+[`ONBOARDING.md`](../ONBOARDING.md).
+
+---
+
+## 5. Where to look when you want the *why*
+
+- **"Why is it built this way?"** → [`docs/decisions/`](decisions) (the ADRs) and
+  [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
+- **"What does this word mean?"** → [`docs/GLOSSARY.md`](GLOSSARY.md).
+- **"How do I run / test / branch?"** → [`docs/DEVELOPER_GUIDE.md`](DEVELOPER_GUIDE.md).
+- **"What already exists today?"** → [`docs/architecture/current-state.md`](architecture/current-state.md).
+
+> **If you are an AI agent reading this:** your binding contract is [`CLAUDE.md`](../CLAUDE.md)
+> (mirrored in [`AGENTS.md`](../AGENTS.md)). This overview is orientation; those files are rules.
