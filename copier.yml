@@ -106,6 +106,18 @@ include_compliance_spine:
 # Tasks execute shell commands, so Copier gates them behind --trust. The Python
 # setup is best-effort (|| echo) so a fresh generation never hard-fails offline.
 _tasks:
+  # Stamp the current year into LICENSE (Jinja has no date; tasks always run since --trust is
+  # required). Fills MIT `Copyright (c) <name>` and the Apache appendix `Copyright [yyyy] <name>`.
+  # Best-effort (|| true): a year-less license is still valid if this ever no-ops.
+  - >-
+    python3 -c 'import datetime,pathlib,re;
+    y=str(datetime.date.today().year);
+    f=pathlib.Path("LICENSE");
+    t=f.read_text() if f.exists() else "";
+    t=t.replace("Copyright [yyyy] ","Copyright "+y+" ");
+    t=re.sub(r"Copyright \(c\) (?!\d)","Copyright (c) "+y+" ",t);
+    f.exists() and f.write_text(t)'
+    || true
   - "git init -q -b main && git add -A"
   - >-
     python3 -m venv backend/.venv

@@ -40,7 +40,9 @@ services:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
-    healthcheck:
+{% if include_compliance_spine %}      redis:
+        condition: service_healthy
+{% endif %}    healthcheck:
       test:
         - CMD
         - python
@@ -84,7 +86,46 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-{% if include_frontend %}
+{% if include_compliance_spine %}
+  # Telemetry stream for the compliance spine. Ephemeral + capped (the durable copy is the
+  # Postgres cold store), so no persistence is configured.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # Background worker: drains the telemetry stream → cold store, then seals the audit chain.
+  # Without it the spine collects nothing, so it ships whenever the spine is enabled.
+  worker:
+    build: ../backend
+    image: {{ project_slug }}-backend:latest
+    command: ["python", "-m", "{{ python_package }}.command.worker"]
+    restart: unless-stopped
+    env_file: ../.env
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    # The worker has no HTTP server, so the image's /health HEALTHCHECK doesn't apply.
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+{% endif %}{% if include_frontend %}
   frontend:
     build: ../frontend
     image: {{ project_slug }}-frontend:latest

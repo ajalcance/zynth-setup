@@ -1,6 +1,6 @@
 # Deploy — {{ project_name }}
 
-Single-host Docker Compose stack: **Caddy** (TLS + reverse proxy) → **backend**{% if include_frontend %} + **frontend**{% endif %}, with **Postgres** and a one-shot **migrate** step.
+Single-host Docker Compose stack: **Caddy** (TLS + reverse proxy) → **backend**{% if include_frontend %} + **frontend**{% endif %}, with **Postgres**{% if include_compliance_spine %}, **Redis** + a compliance-spine **worker**,{% endif %} and a one-shot **migrate** step.
 
 ## First deploy
 
@@ -32,3 +32,7 @@ docker compose --env-file ../.env run --rm migrate
 - `Caddyfile` uses `tls internal` (self-signed). For a real domain, remove that line for
   automatic Let's Encrypt.
 - Containers run **read-only** and **non-root** with `no-new-privileges`.
+{% if include_compliance_spine %}- The **worker** (`{{ python_package }}.command.worker`) drains the Redis telemetry stream into the
+  Postgres cold store and seals the audit chain. It restarts on failure; if it is down, requests are
+  unaffected (telemetry is fail-open) — only ingest/sealing pauses.
+{% endif %}

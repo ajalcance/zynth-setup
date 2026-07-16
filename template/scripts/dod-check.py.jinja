@@ -60,7 +60,9 @@ def check_as_built(errors: list[str]) -> None:
     if app.is_dir():
         for sub in sorted(app.iterdir()):
             if sub.is_dir() and not sub.name.startswith("__"):
-                if sub.name not in arch:
+                # Require the module as a path token (`name/`) or backticked (`name`), not a bare
+                # substring — otherwise 'db' would spuriously match inside any longer word.
+                if f"{sub.name}/" not in arch and f"`{sub.name}`" not in arch:
                     errors.append(
                         f"current-state.md does not mention module "
                         f"'backend/{APP_PKG}/{sub.name}/' — document it in the As-Built section"
