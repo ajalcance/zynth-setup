@@ -34,3 +34,14 @@ testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["."]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+# `pytest --cov` (no path) measures this — keeps the verbatim ci.yml package-agnostic.
+source = ["{{ python_package }}"]
+omit = ["*/migrations/*"]
+
+[tool.coverage.report]
+# The floor is an anti-regression ratchet, not a quality target: it exists so an agent
+# can't gut the tests to make the suite pass. Raise it as real coverage grows.
+fail_under = 70
+show_missing = true

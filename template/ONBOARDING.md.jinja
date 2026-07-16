@@ -40,10 +40,19 @@ gh pr view --json reviewDecision   # expect: REVIEW_REQUIRED (blocked until a co
 If that PR is *not* blocked, code-owner enforcement isn't active — fix it before trusting the repo.
 (Phase E2 adds a CI-level meta-guard as a second line of defence.)
 
+## 3. (Optional) Scorecard admin token
+
+The `Scorecard` workflow already runs (scheduled + on push). Its **Branch-Protection** check needs
+a read token with admin — without it that one check is skipped, not failed. To enable it, add a
+fine-grained PAT (read-only: Administration + Contents + Metadata) as a repo secret:
+
+```bash
+gh secret set SCORECARD_TOKEN   # paste the PAT
+```
+
 ## Coming with later hardening phases
 
-These are wired in the template as they land; each is one install/toggle here (kept fail-closed):
+Wired in the template as they land; each is one install/toggle here (kept fail-closed):
 
-- **OSSF Scorecard** — scheduled posture check; may need a read-only PAT for the branch-protection check.
 - **Socket.dev** — install the GitHub App on your org and set it to **block** (behavioral supply-chain analysis).
 - **cosign + provenance** — enable a container registry (GHCR) and OIDC so CI can sign the image and deploy can verify it.

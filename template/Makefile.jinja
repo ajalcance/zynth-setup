@@ -25,7 +25,7 @@ backend:
 	.venv/bin/mypy . && \
 	.venv/bin/bandit -r {{ python_package }} -ll -q && \
 	.venv/bin/pip-audit -r requirements.txt && \
-	.venv/bin/pytest -q
+	.venv/bin/pytest -q --cov
 {% if include_frontend %}
 # ---- Frontend (Next.js) ----
 frontend:

@@ -4,8 +4,8 @@
 # Runs on every PR and on pushes to develop/main. Path-filtered so a docs-only
 # change doesn't run backend/frontend suites; jobs skip when their paths are absent.
 #
-# HARDENING TODO: pin these action version tags to full commit SHAs with a tool
-# (pinact/ratchet). Dependabot (github-actions) keeps them current once pinned.
+# Actions are pinned to full commit SHAs (with a version comment); Dependabot
+# (github-actions) keeps them current. `ci-complete` is the single required check.
 # ==============================================================================
 
 name: CI
@@ -35,8 +35,8 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       changelog: ${{ steps.filter.outputs.changelog }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         with:
           filters: |
@@ -58,10 +58,10 @@ jobs:
   hygiene:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Run pre-commit hooks (gitleaks, detect-private-key, hygiene)
@@ -73,8 +73,8 @@ jobs:
   sast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Install Semgrep
@@ -93,8 +93,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
           cache: pip
@@ -110,8 +110,8 @@ jobs:
         run: bandit -r . -ll -x tests
       - name: Supply-chain audit (pip-audit)
         run: pip-audit -r requirements.txt
-      - name: Tests (pytest)
-        run: pytest -q
+      - name: Tests (pytest + coverage floor)
+        run: pytest -q --cov
 
   # ---- Frontend: lint + type + test (only if frontend/ changed) -----------
   frontend:
@@ -122,8 +122,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '20'
           cache: npm
@@ -150,8 +150,8 @@ jobs:
       run:
         working-directory: docs-site
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '20'
           cache: npm
@@ -167,12 +167,38 @@ jobs:
   doc-guards:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: As-built + stale-reference guards
         run: python3 scripts/dod-check.py
+
+  # ---- Meta-guard: block silent weakening of the guards (PR only; blocking) ----
+  # An agent trying to make CI green can add # noqa / # type: ignore / # nosemgrep /
+  # # pragma: no cover, or change code without a test. This diff-based check fails on net-new
+  # suppressions or missing tests. Escape hatches are explicit PR labels a human must apply —
+  # so an override is always a conscious act, never silent. See docs/decisions/0004.
+  pr-policy:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Meta-guard (suppression ratchet + test presence)
+        env:
+          ALLOW_SUPPRESSIONS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-suppressions') }}
+          ALLOW_MISSING_TESTS: ${{ contains(github.event.pull_request.labels.*.name, 'no-tests-needed') }}
+        run: |
+          git fetch -q origin "${{ github.base_ref }}"
+          flags=""
+          [ "$ALLOW_SUPPRESSIONS" = "true" ] && flags="$flags --allow-suppressions"
+          [ "$ALLOW_MISSING_TESTS" = "true" ] && flags="$flags --allow-missing-tests"
+          python3 scripts/meta_guard.py --base "origin/${{ github.base_ref }}" $flags
 
   # ---- Required-check aggregator (the one check the branch ruleset requires) ----
   # Path-filtered jobs (backend/frontend/docs) don't run on every PR, so none of them can be a
@@ -181,7 +207,7 @@ jobs:
   # 'skipped'. The branch ruleset (.github/rulesets/main.json) requires *this* context, so the gate
   # cannot be edited away in-repo. See docs/decisions/0004.
   ci-complete:
-    needs: [changes, hygiene, sast, backend, frontend, docs, doc-guards]
+    needs: [changes, hygiene, sast, backend, frontend, docs, doc-guards, pr-policy]
     if: always()
     runs-on: ubuntu-latest
     steps:

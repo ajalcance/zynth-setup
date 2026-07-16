@@ -76,8 +76,10 @@ Tag template releases so projects can pin/update to a known version.
   - ✅ **E1** — enforcement outside the repo: branch ruleset (`template/.github/rulesets/main.json` +
     `scripts/bootstrap-repo.sh`), a `ci-complete` required-check aggregator, and a scoped
     `CODEOWNERS` (review the guardrails, trust the features). One-time setup in `ONBOARDING.md`.
-  - ⬜ **E2** — erosion watch: OSSF Scorecard (curated gating subset) + a meta-guard (suppression /
-    `EXEMPT`-list growth, workflow-change detection) + coverage threshold & code-without-test gate.
+  - ✅ **E2** — erosion watch: OSSF Scorecard (`scorecard.yml` + `scripts/scorecard_gate.py`, curated
+    subset, PAT-aware) + a meta-guard (`scripts/meta_guard.py` + `pr-policy` job: suppression ratchet
+    & code-without-test, both label-escapable) folded into `ci-complete`, a `pytest --cov` floor
+    (70%, in pyproject), and all workflow actions SHA-pinned.
   - ⬜ **E3** — dependency integrity: Socket.dev (block mode) + lockfile-hash enforcement.
   - ⬜ **E4** — artifact integrity: cosign keyless sign + SLSA provenance; deploy verifies by digest.
   - ⬜ **E5** — runtime containment for the dev agent + an auth scaffold that populates the spine's
