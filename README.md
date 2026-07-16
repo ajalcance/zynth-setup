@@ -2,7 +2,31 @@
 
 > **A Copier template for starting a new project with the whole engineering framework already wired.**
 
-Stamp out a new repository that ships, on day one, with:
+## Why this exists
+
+Most project templates assume a human reviews every line before it ships. This one is built for a
+different reality:
+
+> **The AI writes and ships most of the code, and a human does *not* review every line.
+> So the safety rails — not the code — are the real product.**
+
+Everything here follows from that. The checks **fail closed** (when in doubt, stop rather than let
+something risky through), and the guardrails are made **agent-resistant** — an AI assistant can't
+quietly switch them off to make its work pass, because enforcement lives on the server (branch
+ruleset + required reviews), not in a file the agent can edit. The full reasoning is in
+[ADR-0004](template/docs/decisions/0004-agent-resistant-guardrails.md).
+
+## Who it's for
+
+- **A good fit if:** you're a solo dev or small team building a backend-heavy service with
+  AI assistance, where **auditability, compliance, or security matter** and you want the guardrails
+  to catch mistakes you won't personally review. Non-technical builders welcome — every generated
+  project ships a plain-language [`OVERVIEW`](template/docs/OVERVIEW.md.jinja) and
+  [`GLOSSARY`](template/docs/GLOSSARY.md).
+- **Probably overkill if:** you're building a throwaway prototype, a one-off script, or a spike you
+  intend to delete. The discipline here pays off over a project's life; it's friction on a weekend hack.
+
+## What you get, on day one
 
 - **AI working contract** — `CLAUDE.md` / `AGENTS.md`, the after-every-change Definition-of-Done ritual, coding standards.
 - **Docs-as-code system** — architecture blueprint + as-built page, ADRs, roadmap, lessons log, dual-audience (external/internal) doc skeletons.
