@@ -6,10 +6,12 @@
 # Runs scheduled + on push to main + when a branch-protection rule changes. A
 # regression turns THIS workflow red (a visible signal); it is not a per-PR gate.
 #
-# The Branch-Protection check needs a read token with admin — set a repo secret
-# SCORECARD_TOKEN (a fine-grained PAT). Without it that one check is inconclusive
-# and skipped (not failed). See ONBOARDING.md. GHAS is NOT required (results are
-# uploaded as an artifact, not to the Security tab).
+# On a PRIVATE repo Scorecard cannot run at all without a token: its GraphQL queries
+# are not permitted to the default GITHUB_TOKEN, so it aborts before writing results.
+# Set the repo secret SCORECARD_TOKEN — a *classic* PAT with `repo` scope; a
+# fine-grained PAT is NOT sufficient. Without it this workflow stays green and warns
+# that monitoring is inactive. On a public repo no PAT is needed. See ONBOARDING.md.
+# GHAS is NOT required (results are uploaded as an artifact, not to the Security tab).
 # ==============================================================================
 
 name: Scorecard
@@ -30,12 +32,24 @@ jobs:
       contents: read
       actions: read
       id-token: write
+      # Documented as required by ossf/scorecard-action to query commits and detect SAST
+      # tooling. Their absence is the documented cause of "Resource not accessible by
+      # integration" — the tool then aborts before writing results.json.
+      issues: read
+      pull-requests: read
+      checks: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
 
+      # Degrade at THIS layer, not just in the gate. On a private repo Scorecard's GraphQL
+      # ListCommits query is not permitted to the default GITHUB_TOKEN, so the tool aborts and
+      # writes no results.json at all — the gate's own skip logic never gets to run. Without
+      # continue-on-error a brand-new private repo has a permanently red workflow, which trains
+      # the adopter to ignore failing workflows. The gate below still fails on a real regression.
       - name: Run Scorecard
+        continue-on-error: true
         uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
         with:
           results_file: results.json

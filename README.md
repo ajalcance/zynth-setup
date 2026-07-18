@@ -55,13 +55,28 @@ assistant) can understand what each part does and why.
 
 ## Use it
 
-Install [Copier](https://copier.readthedocs.io/). If you already have `pipx` or `uv`, use
-`pipx install copier` / `uv tool install copier`. If you have neither, plain Python works:
+Install [Copier](https://copier.readthedocs.io/). On a clean machine you need the *installer*
+first — a fresh macOS box has neither `pipx` nor `uv`:
 
 ```bash
+# macOS
+brew install uv && uv tool install copier
+
+# Linux
+sudo apt install pipx && pipx install copier
+
+# no package manager? plain Python works:
 python3 -m venv ~/.venvs/copier && ~/.venvs/copier/bin/pip install copier
-# then use ~/.venvs/copier/bin/copier in place of `copier` below
 ```
+
+`uv` and `pipx` install binaries to `~/.local/bin`, which is **not** on macOS's default `PATH`.
+If you get `copier: command not found`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Copier itself needs Python 3.9+ (separate from the generated project's Python 3.12).
 
 Then generate:
 

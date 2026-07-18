@@ -44,19 +44,45 @@ scripts live in `.claude/hooks/`.
 Makes passing CI + code-owner review a *repo setting*, not a file an agent can rewrite:
 
 ```bash
+# prerequisites: gh AND jq (bootstrap-repo.sh exits if either is missing)
+brew install jq               # or: sudo apt install jq
+
 gh auth login                 # needs 'repo' scope + admin on this repo
 ./scripts/bootstrap-repo.sh   # applies every .github/rulesets/*.json (idempotent)
 ```
 
-After the first PR runs CI once, the `ci-complete` check registers and becomes required. From then
+{% if solo_maintainer %}After the first PR runs CI once, the `ci-complete` check registers and becomes required. From then
+on **nothing merges without green CI**, and `main` cannot be force-pushed or deleted.
+
+> **Configured for a solo maintainer.** You answered *yes* to `solo_maintainer`, so code-owner
+> review is **not** required. This is deliberate: GitHub forbids approving your own PR, so
+> requiring it would block every guardrail change and force `gh pr merge --admin` as routine —
+> producing no review *and* normalising `--admin` on exactly the changes that deserve most care.
+> `.github/CODEOWNERS` is retained as **advisory** (it still auto-requests your review).
+>
+> **What this costs:** agent-resistance now rests entirely on CI being fail-closed and enforced in
+> repo settings an agent cannot edit — the branch ruleset, `ci-complete`, and the CI meta-guard.
+> If you add a second maintainer, re-run with `solo_maintainer=false`.
+
+**Prove it fails closed (do this once).** Confirm the ruleset blocks a direct push to `main`:
+
+```bash
+git switch main && echo x >> README.md && git commit -am "test: direct push"
+git push        # expect: GH013: Repository rule violations found for refs/heads/main
+git reset --hard origin/main
+```
+
+If that push succeeds, the ruleset isn't active — fix it before trusting the repo.{% else %}After the first PR runs CI once, the `ci-complete` check registers and becomes required. From then
 on: no merge without green CI, and any change to the guardrails (CI, security rules, dependency
 manifests, spine decision lists — see `.github/CODEOWNERS`) needs a human approval.
 
-> **Solo owner, one identity:** GitHub won't let you approve your own PR. For guardrail changes
-> you'll need a second reviewer, or a deliberate admin merge. Feature PRs are unaffected.
+> **Code-owner review is required.** You answered *no* to `solo_maintainer`, so guardrail changes
+> need an approval from someone other than the author. **GitHub forbids approving your own PR** —
+> if you are in fact the only maintainer, every guardrail PR is permanently blocked and you will
+> have to `gh pr merge --admin`. In that case re-run with `solo_maintainer=true`.
 
 **Prove it fails closed (do this once).** The baseline requires *0* approvals, so feature PRs merge
-without review — but a change to a code-owned guardrail must require your approval. Verify:
+without review — but a change to a code-owned guardrail must require approval. Verify:
 
 ```bash
 # On a throwaway branch, edit a guarded file and open a PR:
@@ -66,17 +92,31 @@ gh pr view --json reviewDecision   # expect: REVIEW_REQUIRED (blocked until a co
 ```
 
 If that PR is *not* blocked, code-owner enforcement isn't active — fix it before trusting the repo.
-(Phase E2 adds a CI-level meta-guard as a second line of defence.)
+(Phase E2 adds a CI-level meta-guard as a second line of defence.){% endif %}
 
-## 3. (Optional) Scorecard admin token
+## 3. Scorecard token — **required on a private repo**
 
-The `Scorecard` workflow already runs (scheduled + on push). Its **Branch-Protection** check needs
-a read token with admin — without it that one check is skipped, not failed. To enable it, add a
-fine-grained PAT (read-only: Administration + Contents + Metadata) as a repo secret:
+The `Scorecard` workflow watches that the guardrails themselves don't erode over many PRs.
+
+**On a private repository it cannot run at all without a token.** Scorecard's GraphQL queries are
+not permitted to the default `GITHUB_TOKEN` on private repos, so it aborts on `ListCommits` before
+writing `results.json` — the whole tool fails, not just one check. The workflow tolerates that
+(warns rather than failing), but **guardrail monitoring is inactive until you add a token.**
+
+A **fine-grained** PAT is *not* sufficient — Scorecard fails with `Resource not accessible by
+personal access token`. Use a **classic** token with `repo` scope:
 
 ```bash
-gh secret set SCORECARD_TOKEN   # paste the PAT
+gh secret set SCORECARD_TOKEN   # classic PAT, `repo` scope
 ```
+
+> **Security trade-off, stated plainly.** A classic token cannot be scoped to a single repository:
+> `repo` grants read **and write** to every private repo the account can reach, and it then lives
+> in this repo's secrets. Use a short expiry (30 days) and rotate it. If that trade is
+> unacceptable, leave the token unset — the workflow stays green and warns that monitoring is
+> inactive.
+
+On a **public** repo the default `GITHUB_TOKEN` suffices and no PAT is needed.
 
 ## 4. Socket.dev — behavioural supply-chain analysis (recommended)
 

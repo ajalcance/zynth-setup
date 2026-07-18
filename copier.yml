@@ -111,6 +111,17 @@ include_compliance_spine:
     data. Each new action must then satisfy 4 coverage guards. You can add it later.
   default: false
 
+# --- Governance ---------------------------------------------------------------
+solo_maintainer:
+  type: bool
+  help: >-
+    Are you the only maintainer? GitHub forbids approving your own PR, so requiring
+    code-owner review would block EVERY guardrail change and force `gh pr merge --admin`.
+    A control bypassed by reflex is worse than none. Yes = gate merges on green CI
+    instead (CODEOWNERS still auto-requests review, advisory). No = require code-owner
+    review, which needs a second human.
+  default: true
+
 # --- Local agent ergonomics ---------------------------------------------------
 include_claude_hooks:
   type: bool
