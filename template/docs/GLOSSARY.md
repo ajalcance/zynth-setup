@@ -78,10 +78,11 @@ Everything your project depends on that you didn't write — libraries, base ima
 A "supply-chain attack" is when one of those is tampered with. Pinning, auditing, and behavioral
 scanning defend against it.
 
-### Signing & provenance (cosign)
-A way to cryptographically **sign** a built artifact (like a container image) and record where it
-came from, so the server can **verify** it's genuine before running it. Prevents a swapped or
-tampered build from being deployed. Used only if the deploy option is enabled.
+### Signing (cosign)
+A way to cryptographically **sign** a built artifact (like a container image), so the server can
+**verify** it is genuinely the one your CI produced before running it. Prevents a swapped or
+tampered build from being deployed. "Keyless" means the signature is tied to the CI workflow's
+identity, so there is no private key for anyone to steal. Used only if the deploy option is enabled.
 
 ### Egress firewall (sandbox)
 A control in the development sandbox that **blocks outbound network connections** except to an

@@ -2,10 +2,16 @@
 # Release — build, push, SIGN and ATTEST the deployable images
 # ==============================================================================
 # On a version tag (v*), builds the backend (and frontend if present), pushes to
-# GHCR, signs each image keyless with cosign (GitHub OIDC — no key to manage), and
-# attaches SLSA build provenance. The deploy host verifies these before running
-# anything (deploy/verify.sh), so only the exact CI-built image is deployable.
-# See docs/decisions/0004.
+# GHCR, and signs each image keyless with cosign (GitHub OIDC — no key to manage).
+# The deploy host verifies the signature before running anything (deploy/verify.sh),
+# so only the exact CI-built image is deployable. See docs/decisions/0004.
+#
+# Signing is cosign-only, deliberately. The GitHub Attestations API
+# (actions/attest-build-provenance) is not available on every plan/visibility, and
+# `deploy/verify.sh` only ever calls `cosign verify` — so an attestation was never
+# load-bearing for the deploy gate, it just added a step that could fail the release.
+# Builds also set `provenance: false` so each push is a single manifest and the signed
+# digest is unambiguously the digest of the image that runs.
 # ==============================================================================
 
 name: Release
@@ -23,7 +29,7 @@ jobs:
   # Pushing a tag is an ordinary git operation available to any agent or contributor with
   # write access — and it is the ONE path to production that bypasses PR review, code-owner
   # review and `ci-complete`. Without this, `git tag v9.9.9` on an unreviewed feature branch
-  # produces a genuinely cosign-signed, SLSA-attested image that deploy/verify.sh accepts as
+  # produces a genuinely cosign-signed image that deploy/verify.sh accepts as
   # legitimate: a valid signature attesting to the wrong thing. Refuse to sign anything that
   # is not reachable from the default branch. See docs/decisions/0004.
   guard:
@@ -54,7 +60,6 @@ jobs:
       contents: read
       packages: write # push to GHCR
       id-token: write # cosign keyless signing (OIDC)
-      attestations: write # SLSA build provenance
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
@@ -77,6 +82,12 @@ jobs:
         with:
           context: backend
           push: true
+          # Single manifest, so the pushed digest IS the image digest. buildx defaults
+          # provenance to on, which publishes an OCI *index* (image + attestation manifest);
+          # `outputs.digest` would then be the index digest and cosign would sign the index
+          # rather than the thing that actually runs. Keep the invariant unambiguous: the
+          # digest you sign is the digest you deploy. See docs/decisions/0004.
+          provenance: false
           tags: |
             ghcr.io/${{ steps.ns.outputs.repo }}-backend:${{ github.ref_name }}
             ghcr.io/${{ steps.ns.outputs.repo }}-backend:latest
@@ -85,13 +96,6 @@ jobs:
 
       - name: Sign backend (keyless)
         run: cosign sign --yes "ghcr.io/${{ steps.ns.outputs.repo }}-backend@${{ steps.backend.outputs.digest }}"
-
-      - name: Attest backend provenance
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-name: ghcr.io/${{ steps.ns.outputs.repo }}-backend
-          subject-digest: ${{ steps.backend.outputs.digest }}
-          push-to-registry: true
 
       # ---- frontend (only if it exists) ----
       - name: Detect frontend
@@ -106,6 +110,7 @@ jobs:
         with:
           context: frontend
           push: true
+          provenance: false # single manifest, so digest == image (see backend step)
           tags: |
             ghcr.io/${{ steps.ns.outputs.repo }}-frontend:${{ github.ref_name }}
             ghcr.io/${{ steps.ns.outputs.repo }}-frontend:latest
@@ -113,11 +118,3 @@ jobs:
       - name: Sign frontend (keyless)
         if: steps.fe.outputs.exists == 'true'
         run: cosign sign --yes "ghcr.io/${{ steps.ns.outputs.repo }}-frontend@${{ steps.frontend.outputs.digest }}"
-
-      - name: Attest frontend provenance
-        if: steps.fe.outputs.exists == 'true'
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-name: ghcr.io/${{ steps.ns.outputs.repo }}-frontend
-          subject-digest: ${{ steps.frontend.outputs.digest }}
-          push-to-registry: true

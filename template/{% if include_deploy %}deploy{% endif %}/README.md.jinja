@@ -4,12 +4,15 @@ Single-host Docker Compose stack: **Caddy** (TLS + reverse proxy) → **backend*
 
 ## Production: deploy only signed images
 
-Production **never builds on the host** — it runs the exact images CI built, signed (cosign
-keyless) and attested (SLSA provenance) via `.github/workflows/release.yml`. So what runs is
-provably what CI produced, not whatever source happened to be on the box.
+Production **never builds on the host** — it runs the exact images CI built and signed (cosign
+keyless) via `.github/workflows/release.yml`. So what runs is provably what CI produced, not
+whatever source happened to be on the box.
+
+Builds set `provenance: false`, so each push is a **single manifest** and the signed digest is
+unambiguously the digest of the image that runs (not an OCI index wrapping it).
 
 ```bash
-# 1. Cut a release — CI builds, pushes to GHCR, signs + attests each image.
+# 1. Cut a release — CI builds, pushes to GHCR and signs each image (tag must be on the default branch).
 git tag v0.1.0 && git push origin v0.1.0
 
 # 2. On the server: real secrets in ../.env (copy from ../.env.example). NEVER commit it.

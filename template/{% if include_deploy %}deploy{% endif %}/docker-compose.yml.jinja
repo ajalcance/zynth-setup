@@ -1,6 +1,6 @@
 # {{ project_name }} — deployment stack.
 #
-# PRODUCTION pulls the exact images CI built, signed (cosign) and attested — never builds on
+# PRODUCTION pulls the exact images CI built and signed (cosign) — never builds on
 # the host. On the server, from this directory:
 #   ./verify.sh "$BACKEND_IMAGE"{% if include_frontend %} "$FRONTEND_IMAGE"{% endif %}   # fail-closed signature check
 #   docker compose -f docker-compose.yml --env-file ../.env up -d   # base only (no build override)

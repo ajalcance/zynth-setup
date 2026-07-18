@@ -45,7 +45,7 @@ Makes passing CI + code-owner review a *repo setting*, not a file an agent can r
 
 ```bash
 gh auth login                 # needs 'repo' scope + admin on this repo
-./scripts/bootstrap-repo.sh   # applies .github/rulesets/main.json (idempotent)
+./scripts/bootstrap-repo.sh   # applies every .github/rulesets/*.json (idempotent)
 ```
 
 After the first PR runs CI once, the `ci-complete` check registers and becomes required. From then
@@ -96,8 +96,10 @@ is *safe*.
 {% if include_deploy %}## 5. Signed deploys (cosign)
 
 Nothing to configure for *signing*: `.github/workflows/release.yml` builds on a `v*` tag, signs each
-image **keyless** via GitHub OIDC (no key to manage), pushes to GHCR with the built-in `GITHUB_TOKEN`,
-and attaches SLSA provenance. Two host-side steps:
+image **keyless** via GitHub OIDC (no key to manage), and pushes to GHCR with the built-in
+`GITHUB_TOKEN`. Signing is cosign-only by design — `deploy/verify.sh` verifies the cosign
+signature, so a GitHub attestation (unavailable on some plans/visibilities) would only add a step
+that could fail the release without strengthening the deploy gate. Two host-side steps:
 
 - Install **cosign** on the deploy host (`deploy/verify.sh` uses it): <https://docs.sigstore.dev/cosign/system_config/installation>.
 - Make the GHCR packages pullable by the host — they inherit repo visibility; for a private repo,
@@ -109,7 +111,7 @@ Then cut a release (`git tag v0.1.0 && git push origin v0.1.0`) and follow `depl
 > **Release tags must be cut from the default branch.** Pushing a tag is an ordinary git
 > operation — it is the one route to production that skips PR review, code-owner review and
 > `ci-complete`. Without a guard, `git tag v9.9.9` on an unreviewed branch would produce a
-> genuinely signed, attested image that `deploy/verify.sh` accepts: a valid signature attesting
+> genuinely signed image that `deploy/verify.sh` accepts: a valid signature attesting
 > to the wrong thing. The `guard` job in `release.yml` therefore refuses to build or sign any tag
 > whose commit is not an ancestor of the default branch.
 

@@ -44,8 +44,8 @@ roll out as toggle-able modules** held to the same bar (below).
    **block**) catches a dependency that *newly* runs install scripts or touches network/filesystem —
    the poisoned-update vector CVE scanners miss — paired with lockfile-hash enforcement so a silent
    version bump can't slip in either.
-5. **Artifact integrity (Phase 4) and runtime containment (Phase 5).** CI builds, signs
-   (**cosign** keyless / OIDC) and attests (SLSA provenance) an image by digest; deploy pulls that
+5. **Artifact integrity (Phase 4) and runtime containment (Phase 5).** CI builds and signs
+   (**cosign** keyless / OIDC) an image by digest; deploy pulls that
    digest and verifies the signature against the pinned workflow identity before running —
    fail-closed, so only the built-and-signed artifact runs. The dev agent itself runs
    least-privilege with egress allow-listing and no production credentials.
