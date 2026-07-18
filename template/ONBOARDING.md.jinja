@@ -105,4 +105,31 @@ and attaches SLSA provenance. Two host-side steps:
 
 Then cut a release (`git tag v0.1.0 && git push origin v0.1.0`) and follow `deploy/README.md`
 (**verify signatures → start the base stack**). Pin images by `@sha256:` digest.
+
+> **Release tags must be cut from the default branch.** Pushing a tag is an ordinary git
+> operation — it is the one route to production that skips PR review, code-owner review and
+> `ci-complete`. Without a guard, `git tag v9.9.9` on an unreviewed branch would produce a
+> genuinely signed, attested image that `deploy/verify.sh` accepts: a valid signature attesting
+> to the wrong thing. The `guard` job in `release.yml` therefore refuses to build or sign any tag
+> whose commit is not an ancestor of the default branch.
+
+**Optional extra hardening — restrict who may push `v*` tags.** The `guard` job lives in a file an
+agent could edit; a *tag ruleset* is repo settings, which it cannot reach (the ADR-0004 argument).
+To require that only admins cut releases, add a ruleset targeting tags:
+
+```bash
+gh api -X POST repos/{{ github_owner }}/{{ github_repo }}/rulesets --input - <<'JSON'
+{
+  "name": "release-tags", "target": "tag", "enforcement": "active",
+  "bypass_actors": [{ "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }],
+  "conditions": { "ref_name": { "include": ["refs/tags/v*"], "exclude": [] } },
+  "rules": [{ "type": "creation" }, { "type": "update" }, { "type": "deletion" }]
+}
+JSON
+```
+
+Confirm you can still tag afterwards (`actor_id: 5` is the repository **admin** role — adjust the
+bypass list to whoever must be able to cut releases, or you will lock yourself out of releasing).
+This is left as a documented opt-in rather than shipped in `.github/rulesets/`, because the correct
+bypass actors differ per repo and a wrong value blocks all releases.
 {% endif %}

@@ -13,26 +13,37 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ruleset_file="$here/../.github/rulesets/main.json"
+ruleset_dir="$here/../.github/rulesets"
 
 for bin in gh jq; do
   command -v "$bin" >/dev/null 2>&1 || { echo "error: '$bin' is required (install it, then re-run)." >&2; exit 1; }
 done
-[ -f "$ruleset_file" ] || { echo "error: ruleset not found at $ruleset_file" >&2; exit 1; }
+[ -d "$ruleset_dir" ] || { echo "error: ruleset directory not found at $ruleset_dir" >&2; exit 1; }
+
+# Apply EVERY ruleset in the directory, not one hardcoded file: adding a ruleset should be a
+# matter of dropping in a .json, not editing this script (a file an adopter would never think
+# to check). Fails closed if the directory is empty.
+shopt -s nullglob
+ruleset_files=("$ruleset_dir"/*.json)
+shopt -u nullglob
+[ ${#ruleset_files[@]} -gt 0 ] || { echo "error: no rulesets found in $ruleset_dir" >&2; exit 1; }
 
 repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
-name="$(jq -r .name "$ruleset_file")"
-echo "Applying ruleset '$name' to $repo ..."
 
-existing_id="$(gh api "repos/$repo/rulesets" --jq ".[] | select(.name==\"$name\") | .id" 2>/dev/null | head -n1 || true)"
+for ruleset_file in "${ruleset_files[@]}"; do
+  name="$(jq -r .name "$ruleset_file")"
+  echo "Applying ruleset '$name' to $repo ..."
 
-if [ -n "$existing_id" ]; then
-  gh api -X PUT "repos/$repo/rulesets/$existing_id" --input "$ruleset_file" >/dev/null
-  echo "✓ Updated existing ruleset (id $existing_id)."
-else
-  gh api -X POST "repos/$repo/rulesets" --input "$ruleset_file" >/dev/null
-  echo "✓ Created ruleset."
-fi
+  existing_id="$(gh api "repos/$repo/rulesets" --jq ".[] | select(.name==\"$name\") | .id" 2>/dev/null | head -n1 || true)"
+
+  if [ -n "$existing_id" ]; then
+    gh api -X PUT "repos/$repo/rulesets/$existing_id" --input "$ruleset_file" >/dev/null
+    echo "✓ Updated existing ruleset (id $existing_id)."
+  else
+    gh api -X POST "repos/$repo/rulesets" --input "$ruleset_file" >/dev/null
+    echo "✓ Created ruleset."
+  fi
+done
 
 echo
 echo "Verify:  gh api repos/$repo/rulesets --jq '.[].name'"

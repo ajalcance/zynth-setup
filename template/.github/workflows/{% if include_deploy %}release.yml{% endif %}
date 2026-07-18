@@ -19,7 +19,36 @@ permissions:
   contents: read
 
 jobs:
+  # ---- Release provenance guard (BLOCKING; must run before anything is signed) ----
+  # Pushing a tag is an ordinary git operation available to any agent or contributor with
+  # write access — and it is the ONE path to production that bypasses PR review, code-owner
+  # review and `ci-complete`. Without this, `git tag v9.9.9` on an unreviewed feature branch
+  # produces a genuinely cosign-signed, SLSA-attested image that deploy/verify.sh accepts as
+  # legitimate: a valid signature attesting to the wrong thing. Refuse to sign anything that
+  # is not reachable from the default branch. See docs/decisions/0004.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Refuse a tag that is not an ancestor of the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags --quiet origin \
+            "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error title=Unreleasable ref::${GITHUB_REF} points at a commit that is not on \
+          ${DEFAULT_BRANCH}. Release tags must be cut from ${DEFAULT_BRANCH}, so that everything \
+          shipped has passed PR review, code-owner review and ci-complete. Nothing was signed."
+            exit 1
+          fi
+          echo "✓ ${GITHUB_SHA} is reachable from ${DEFAULT_BRANCH} — safe to build and sign."
+
   images:
+    needs: guard
     runs-on: ubuntu-latest
     permissions:
       contents: read
