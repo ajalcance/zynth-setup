@@ -28,12 +28,15 @@ backend:
 	.venv/bin/pytest -q --cov
 {% if include_frontend %}
 # ---- Frontend (Next.js) ----
+# Must mirror the CI `frontend` job in .github/workflows/ci.yml exactly — if the two
+# drift, a check that passes locally can be absent from the merge gate. Keep in sync.
 frontend:
 	cd frontend && \
 	npm run lint && \
 	npx prettier --check . && \
 	npx tsc --noEmit && \
 	npm audit --audit-level=high && \
+	npm test --if-present && \
 	npm run build
 {% endif %}{% if include_docs_site %}
 # ---- Docs site (Next.js) ----

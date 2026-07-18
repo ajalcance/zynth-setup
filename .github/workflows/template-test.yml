@@ -74,6 +74,7 @@ jobs:
           npx prettier --check .
           npx tsc --noEmit
           npm audit --audit-level=high
+          npm test --if-present
           npm run build
 
       - name: Docs-site gate
