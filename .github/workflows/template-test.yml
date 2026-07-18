@@ -87,6 +87,7 @@ jobs:
       - name: Every module's manifests have Dependabot coverage
         working-directory: /tmp/gen
         run: |
+          pip install -q pyyaml   # not present on the runner's bare Python
           python3 - <<'PY'
           import pathlib, sys, yaml
 
