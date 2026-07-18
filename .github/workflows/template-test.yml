@@ -75,6 +75,18 @@ jobs:
         working-directory: /tmp/gen
         run: python scripts/dod-check.py
 
+      # `make check` passing is NOT sufficient to commit: the generated repo's own `hygiene`
+      # job (and the pre-commit hook `--trust` installs) run these, so a generated file that
+      # trips end-of-file-fixer/trailing-whitespace means the adopter's FIRST COMMIT is
+      # rejected. Jinja block tags at EOF are the usual culprit — `{% endif %}` on its own
+      # last line emits a stray newline. Generation must produce a committable tree.
+      - name: Generated project passes its own pre-commit hooks
+        working-directory: /tmp/gen
+        run: |
+          pip install pre-commit
+          git add -A
+          pre-commit run --all-files --show-diff-on-failure
+
       - name: Frontend gate
         if: matrix.name == 'full'
         working-directory: /tmp/gen/frontend

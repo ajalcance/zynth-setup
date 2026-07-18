@@ -92,8 +92,8 @@ is *safe*.
 2. Once it posts its first check, add **Socket Security** to the required checks — re-run
    `./scripts/bootstrap-repo.sh` after adding `{ "context": "Socket Security" }` to the
    `required_status_checks` in `.github/rulesets/main.json`, or add it in the branch-protection UI.
-
-{% if include_deploy %}## 5. Signed deploys (cosign)
+{% if include_deploy %}
+## 5. Signed deploys (cosign)
 
 Nothing to configure for *signing*: `.github/workflows/release.yml` builds on a `v*` tag, signs each
 image **keyless** via GitHub OIDC (no key to manage), and pushes to GHCR with the built-in
@@ -134,4 +134,4 @@ Confirm you can still tag afterwards (`actor_id: 5` is the repository **admin** 
 bypass list to whoever must be able to cut releases, or you will lock yourself out of releasing).
 This is left as a documented opt-in rather than shipped in `.github/rulesets/`, because the correct
 bypass actors differ per repo and a wrong value blocks all releases.
-{% endif %}
+{% endif -%}

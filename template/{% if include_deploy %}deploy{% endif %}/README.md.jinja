@@ -50,4 +50,4 @@ docker compose --env-file ../.env up -d --build
 {% if include_compliance_spine %}- The **worker** (`{{ python_package }}.command.worker`) drains the Redis telemetry stream into the
   Postgres cold store and seals the audit chain. It restarts on failure; if it is down, requests are
   unaffected (telemetry is fail-open) — only ingest/sealing pauses.
-{% endif %}
+{% endif -%}
