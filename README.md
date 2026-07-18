@@ -55,12 +55,48 @@ assistant) can understand what each part does and why.
 
 ## Use it
 
-Install [Copier](https://copier.readthedocs.io/) (`pipx install copier` or `uv tool install copier`), then:
+Install [Copier](https://copier.readthedocs.io/). If you already have `pipx` or `uv`, use
+`pipx install copier` / `uv tool install copier`. If you have neither, plain Python works:
+
+```bash
+python3 -m venv ~/.venvs/copier && ~/.venvs/copier/bin/pip install copier
+# then use ~/.venvs/copier/bin/copier in place of `copier` below
+```
+
+Then generate:
 
 ```bash
 copier copy --trust gh:ajalcance/zynth-setup my-new-project
 cd my-new-project
 ```
+
+### Non-interactive (headless / AI-driven) generation
+
+The prompts need a TTY, so an agent or a script must pass every answer with `--data`. All keys,
+with the optional modules off:
+
+```bash
+copier copy --trust --defaults \
+  --data project_name="My New Project" \
+  --data project_slug="my-new-project" \
+  --data python_package="app" \
+  --data project_description="One-line description" \
+  --data github_owner="your-org" \
+  --data github_repo="my-new-project" \
+  --data author_name="Your Name" \
+  --data author_email="you@example.com" \
+  --data license="Apache-2.0" \
+  --data initial_version="0.1.0" \
+  --data include_frontend=false \
+  --data include_docs_site=false \
+  --data include_deploy=false \
+  --data include_compliance_spine=false \
+  --data include_claude_hooks=true \
+  gh:ajalcance/zynth-setup my-new-project
+```
+
+`--defaults` fills anything you omit. Enabling `include_deploy=true` also requires
+`--data server_host=<ip-or-domain>`.
 
 `--trust` is required because the template runs post-generation setup tasks (`git init`, create the
 backend venv + install deps, install the pre-commit hook). Answer the prompts (project name, owner,

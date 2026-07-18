@@ -18,12 +18,22 @@ jobs:
       matrix:
         include:
           - name: minimal
+            pname: CI Demo
             extra: ""
           - name: full
+            pname: CI Demo
             extra: >-
               --data include_frontend=true --data include_docs_site=true
               --data include_deploy=true --data server_host=example.test
               --data include_compliance_spine=true
+          # Regression guard: a long project name/slug is what breaks formatter-checked
+          # files — it pushed a Python log line past ruff's 100-char limit, and made
+          # prettier re-wrap interpolated TSX. Both were day-one-red bugs that the
+          # short "CI Demo" name could never catch. Keep this row long.
+          - name: long-name
+            pname: Acme Global Compliance And Observability Platform Service
+            extra: >-
+              --data include_frontend=true --data include_docs_site=true
     name: generate (${{ matrix.name }})
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -42,7 +52,7 @@ jobs:
       - name: Generate project
         run: |
           copier copy --defaults --trust \
-            --data project_name="CI Demo" \
+            --data project_name="${{ matrix.pname }}" \
             --data github_owner="ci" \
             --data author_name="CI" \
             --data author_email="ci@example.com" \

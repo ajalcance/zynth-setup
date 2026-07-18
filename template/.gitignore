@@ -7,6 +7,10 @@ venv/
 .ruff_cache/
 .pytest_cache/
 *.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
 # --- Secrets & local env (NEVER commit real values) ---
 .env

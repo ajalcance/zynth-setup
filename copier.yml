@@ -142,6 +142,15 @@ _tasks:
     && backend/.venv/bin/pip install -q -r backend/requirements.txt -r backend/requirements-dev.txt pre-commit
     && backend/.venv/bin/pre-commit install
     || echo '⚠  Skipped Python setup (offline?). Set it up manually — see the README Quick start.'
+  # Invariant: whatever `make check` runs, --trust must have provisioned. `make check` includes
+  # the frontend / docs-site gates when those modules are enabled, so their node_modules must
+  # exist — otherwise the first `make check` dies with `sh: eslint: command not found`.
+  - >-
+    {% if include_frontend %}cd frontend && npm ci --no-audit --no-fund
+    || echo '⚠  Skipped frontend npm install (offline?). Run: cd frontend && npm ci'{% else %}true{% endif %}
+  - >-
+    {% if include_docs_site %}cd docs-site && npm ci --no-audit --no-fund
+    || echo '⚠  Skipped docs-site npm install (offline?). Run: cd docs-site && npm ci'{% else %}true{% endif %}
 
 _message_after_copy: |
   ✅ {{ project_name }} scaffolded.
