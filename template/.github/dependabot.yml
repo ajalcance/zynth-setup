@@ -1,6 +1,16 @@
 # Dependabot — automated dependency & GitHub Actions updates (supply-chain hygiene).
-# Targets the repo's default branch. Minor/patch bumps are grouped per ecosystem to
-# cut noise. Directories without a manifest are simply no-ops until they exist.
+# Targets the repo's default branch. Directories without a manifest are simply no-ops
+# until they exist, so entries for optional modules are safe to keep.
+#
+# Grouping policy: minor/patch bumps are grouped per ecosystem to cut noise, and MAJOR
+# bumps are grouped into a single separate PR per ecosystem. A major bump usually needs a
+# deliberate migration (a major TypeScript/ESLint bump can fail the gate until code is
+# updated), so majors stay visible but land as one reviewable PR instead of flooding a
+# brand-new repo with several red ones.
+#
+# The `docker` entries are load-bearing: base images are pinned by DIGEST, and a pinned
+# digest that is never updated silently rots into an unpatched image. Pinning without
+# Dependabot would be worse than not pinning at all.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -22,6 +32,8 @@ updates:
     groups:
       backend-minor-patch:
         update-types: ["minor", "patch"]
+      backend-major:
+        update-types: ["major"]
 
   - package-ecosystem: npm
     directory: "/frontend"
@@ -32,3 +44,39 @@ updates:
     groups:
       frontend-minor-patch:
         update-types: ["minor", "patch"]
+      frontend-major:
+        update-types: ["major"]
+
+  - package-ecosystem: npm
+    directory: "/docs-site"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docs-site"]
+    groups:
+      docs-site-minor-patch:
+        update-types: ["minor", "patch"]
+      docs-site-major:
+        update-types: ["major"]
+
+  # --- Base images (pinned by digest — see the Dockerfiles) ---
+  - package-ecosystem: docker
+    directory: "/backend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: docker
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: docker
+    directory: "/.devcontainer"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
