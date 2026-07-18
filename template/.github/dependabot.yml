@@ -44,8 +44,31 @@ updates:
     groups:
       frontend-minor-patch:
         update-types: ["minor", "patch"]
-      frontend-major:
-        update-types: ["major"]
+    # Major bumps of the tooling that GATES the build (typescript 5->7, eslint 9->10,
+    # jsdom 26->29) fail the frontend job until the code is migrated, and grouping them
+    # does not stop them returning every week — a fresh repo just accumulates red PRs,
+    # which trains the adopter to ignore Dependabot. Upgrade these deliberately instead:
+    #   npm i -D typescript@latest && npm run lint && npx tsc --noEmit && npm test
+    # Runtime dependencies (next, react, react-dom) still receive major bumps.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "jsdom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "prettier"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@testing-library/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: "/docs-site"
@@ -56,8 +79,17 @@ updates:
     groups:
       docs-site-minor-patch:
         update-types: ["minor", "patch"]
-      docs-site-major:
-        update-types: ["major"]
+    ignore: # same rationale as frontend
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-config-next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "prettier"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/*"
+        update-types: ["version-update:semver-major"]
 
   # --- Base images (pinned by digest — see the Dockerfiles) ---
   - package-ecosystem: docker
