@@ -28,7 +28,7 @@ backend/                    FastAPI backend (Python 3.12)
     command/                cold store (events) + hash-chained audit_log + detection/control catalogs
 {% endif %}  migrations/               Alembic (async env)
   tests/                    pytest (in-memory SQLite) — health smoke tests
-{% if include_frontend %}frontend/                   Next.js app
+{% if include_frontend %}frontend/                   Next.js app (+ tests/ — vitest + Testing Library smoke tests)
 {% endif %}{% if include_docs_site %}docs-site/                  documentation site
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
 {% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · bootstrap-repo.sh

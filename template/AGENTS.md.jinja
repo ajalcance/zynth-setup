@@ -27,7 +27,7 @@ Attempts to weaken a guard are themselves gated and reviewed. What each one prot
 | **Semgrep** (dangerous-ops) | code that can run arbitrary commands / other high-risk patterns | rewrite to the safe pattern; don't add an ignore |
 | **bandit / pip-audit / npm audit** | known-insecure code or a vulnerable dependency | fix the code or update the dependency |
 | **ruff / black / mypy** | style drift, type errors, latent bugs | make the code conform; don't loosen the config |
-| **pytest / coverage floor** | untested behaviour | add the test; don't lower the threshold |
+| **pytest / coverage floor**{% if include_frontend %} · **vitest**{% endif %} | untested behaviour | add the test; don't lower the threshold |
 | **dod-check** (`scripts/dod-check.py`) | docs drifting out of sync with code | update the docs to match reality |
 | **check_pins** (`scripts/check_pins.py`) | an unpinned / floating dependency | pin the exact version |
 | **meta_guard** (`scripts/meta_guard.py`) | silently weakening a guard or shipping code without a test | address the real cause it flagged |
