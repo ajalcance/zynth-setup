@@ -3,7 +3,7 @@
 # ==============================================================================
 # Watches that the guardrails themselves don't erode over many AI-assisted PRs
 # (branch protection, pinned actions, token permissions, dangerous workflows).
-# Runs scheduled + on push to main + when a branch-protection rule changes. A
+# Runs weekly + when a branch-protection rule changes. A
 # regression turns THIS workflow red (a visible signal); it is not a per-PR gate.
 #
 # On a PRIVATE repo Scorecard cannot run at all without a token: its GraphQL queries
@@ -16,12 +16,13 @@
 
 name: Scorecard
 
+# COST: this ran on every push to the default branch, billing a full job-minute each time to
+# re-measure a posture that changes rarely. The weekly schedule is the designed cadence, and
+# `branch_protection_rule` still fires immediately on the drift that matters most.
 on:
   branch_protection_rule:
   schedule:
     - cron: "27 6 * * 1" # Mondays 06:27 UTC
-  push:
-    branches: [main]
 
 permissions: read-all
 

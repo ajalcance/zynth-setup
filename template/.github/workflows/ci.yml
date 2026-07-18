@@ -1,8 +1,9 @@
 # ==============================================================================
 # CI — quality + security gate
 # ==============================================================================
-# Runs on every PR and on pushes to develop/main. Path-filtered so a docs-only
-# change doesn't run backend/frontend suites; jobs skip when their paths are absent.
+# Runs on every PR, and on pushes to the default branch only (see the cost note below).
+# Path-filtered so a docs-only change doesn't run backend/frontend suites; jobs skip when
+# their paths are absent — and a skipped job costs nothing.
 #
 # Actions are pinned to full commit SHAs (with a version comment); Dependabot
 # (github-actions) keeps them current. `ci-complete` is the single required check.
@@ -10,11 +11,15 @@
 
 name: CI
 
+# COST: GitHub bills per JOB, rounded up to a full minute — job COUNT is the cost driver,
+# not job duration. A PR run and the push run that follows the merge test the same tree, so
+# `push` is limited to the default branch (post-merge verification); PRs are gated by the
+# pull_request run. This roughly halves total runs.
 on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [develop, main]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -172,46 +177,37 @@ jobs:
       - name: Build
         run: npm run build
 
-  # ---- Doc-consistency guards (always; blocking) --------------------------
-  doc-guards:
+  # ---- Static guards, batched (always; blocking) ---------------------------
+  # doc-guards, the dependency pin guard, the meta-guard and the docs-sync nudge were four
+  # separate jobs, each finishing in well under 10 seconds but each billing a FULL MINUTE.
+  # Batched into one job they cost one minute instead of four, with identical coverage.
+  # `changes` stays separate on purpose: it is the dependency other jobs fan out from, so a
+  # doc failure here must not skip backend/frontend/docs and cost you their signal.
+  static:
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0 # the meta-guard diffs against the base branch
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
+
       - name: As-built + stale-reference guards
         run: python3 scripts/dod-check.py
 
-  # ---- Dependency pin guard (always; blocking) ----------------------------
-  # Every requirement must be exactly pinned ('==' or a hash) — no floating spec an agent or a
-  # resolver could bump silently. JS is already deterministic via `npm ci` + package-lock integrity.
-  deps:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.12'
+      # Every requirement must be exactly pinned ('==' or a hash) — no floating spec an agent or
+      # a resolver could bump silently. JS is deterministic via `npm ci` + package-lock integrity.
       - name: Requirements are fully pinned
         run: python3 scripts/check_pins.py backend/requirements.txt backend/requirements-dev.txt
 
-  # ---- Meta-guard: block silent weakening of the guards (PR only; blocking) ----
-  # An agent trying to make CI green can add # noqa / # type: ignore / # nosemgrep /
-  # # pragma: no cover, or change code without a test. This diff-based check fails on net-new
-  # suppressions or missing tests. Escape hatches are explicit PR labels a human must apply —
-  # so an override is always a conscious act, never silent. See docs/decisions/0004.
-  pr-policy:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.12'
+      # An agent trying to make CI green can add # noqa / # type: ignore / # nosemgrep /
+      # # pragma: no cover, or change code without a test. This diff-based check fails on net-new
+      # suppressions or missing tests. Escape hatches are explicit PR labels a human must apply —
+      # so an override is always a conscious act, never silent. See docs/decisions/0004.
       - name: Meta-guard (suppression ratchet + test presence)
+        if: github.event_name == 'pull_request'
         env:
           ALLOW_SUPPRESSIONS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-suppressions') }}
           ALLOW_MISSING_TESTS: ${{ contains(github.event.pull_request.labels.*.name, 'no-tests-needed') }}
@@ -222,6 +218,16 @@ jobs:
           [ "$ALLOW_MISSING_TESTS" = "true" ] && flags="$flags --allow-missing-tests"
           python3 scripts/meta_guard.py --base "origin/${{ github.base_ref }}" $flags
 
+      # Advisory only — a warning annotation, never a failure.
+      - name: Docs-sync nudge — code changed without a CHANGELOG entry
+        if: >-
+          github.event_name == 'pull_request' &&
+          needs.changes.outputs.code == 'true' &&
+          needs.changes.outputs.changelog != 'true' &&
+          !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+        run: |
+          echo "::warning title=Docs-sync::Code changed but CHANGELOG.md was not updated. Add an entry under [Unreleased], or label this PR 'no-changelog' if intentional."
+
   # ---- Required-check aggregator (the one check the branch ruleset requires) ----
   # Path-filtered jobs (backend/frontend/docs) don't run on every PR, so none of them can be a
   # required check directly — a required check that never posts blocks the PR forever. This job
@@ -229,7 +235,7 @@ jobs:
   # 'skipped'. The branch ruleset (.github/rulesets/main.json) requires *this* context, so the gate
   # cannot be edited away in-repo. See docs/decisions/0004.
   ci-complete:
-    needs: [changes, hygiene, sast, backend, frontend, docs, doc-guards, deps, pr-policy]
+    needs: [changes, hygiene, sast, backend, frontend, docs, static]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -244,17 +250,3 @@ jobs:
             fi
           done
           echo "All gates green."
-
-  # ---- Docs-sync nudge (advisory) -----------------------------------------
-  docs-sync:
-    needs: changes
-    if: >-
-      github.event_name == 'pull_request' &&
-      needs.changes.outputs.code == 'true' &&
-      needs.changes.outputs.changelog != 'true' &&
-      !contains(github.event.pull_request.labels.*.name, 'no-changelog')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Nudge — code changed without a CHANGELOG entry
-        run: |
-          echo "::warning title=Docs-sync::Code changed but CHANGELOG.md was not updated. Add an entry under [Unreleased], or label this PR 'no-changelog' if intentional."

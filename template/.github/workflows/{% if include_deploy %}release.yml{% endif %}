@@ -1,5 +1,5 @@
 # ==============================================================================
-# Release — build, push, SIGN and ATTEST the deployable images
+# Release — build, push and SIGN the deployable images
 # ==============================================================================
 # On a version tag (v*), builds the backend (and frontend if present), pushes to
 # GHCR, and signs each image keyless with cosign (GitHub OIDC — no key to manage).
@@ -82,6 +82,10 @@ jobs:
         with:
           context: backend
           push: true
+          # Release builds are duration-bound (real compile work), unlike ci.yml which is
+          # dominated by the per-job minute minimum — so caching genuinely pays here.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           # Single manifest, so the pushed digest IS the image digest. buildx defaults
           # provenance to on, which publishes an OCI *index* (image + attestation manifest);
           # `outputs.digest` would then be the index digest and cosign would sign the index
@@ -110,6 +114,8 @@ jobs:
         with:
           context: frontend
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           provenance: false # single manifest, so digest == image (see backend step)
           tags: |
             ghcr.io/${{ steps.ns.outputs.repo }}-frontend:${{ github.ref_name }}
