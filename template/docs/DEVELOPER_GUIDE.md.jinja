@@ -5,6 +5,9 @@ How to set up, run, test, branch, and ship in {{ project_name }}.
 ## Prerequisites
 
 - Python 3.12+
+{%- if include_frontend or include_docs_site %}
+- Node 20+ (for {{ 'frontend/ and docs-site/' if (include_frontend and include_docs_site) else ('frontend/' if include_frontend else 'docs-site/') }})
+{%- endif %}
 - (optional) Docker + Docker Compose for the full stack
 - `pre-commit` (`pip install pre-commit`)
 
@@ -20,21 +23,42 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 cp ../.env.example ../.env    # fill in local values
 ```
-
+{% if include_frontend %}
+```bash
+cd frontend && npm ci
+```
+{% endif %}{% if include_docs_site %}
+```bash
+cd docs-site && npm ci
+```
+{% endif %}
 ## Run
 
 ```bash
 uvicorn {{ python_package }}.main:app --reload    # http://localhost:8000
 # health: GET /health ; docs (non-prod): /docs
 ```
-
+{% if include_frontend %}
+```bash
+cd frontend && npm run dev    # http://localhost:3000
+```
+{% endif %}{% if include_docs_site %}
+```bash
+cd docs-site && npm run dev   # http://localhost:3000 (different port if run alongside frontend)
+```
+{% endif %}
 ## Test & gate
 
 ```bash
-make backend        # ruff, black, mypy, bandit, pip-audit, pytest
-make check          # full gate
-make dod-check      # doc-consistency guards
-make fmt            # auto-format
+make backend    # ruff, black, mypy, bandit, pip-audit, pytest
+{%- if include_frontend %}
+make frontend   # eslint, prettier, tsc, npm audit, vitest, next build
+{%- endif %}{% if include_docs_site %}
+make docs-site  # eslint, prettier, npm audit, next build
+{%- endif %}
+make check      # full gate — everything above
+make dod-check  # doc-consistency guards
+make fmt        # auto-format{% if include_frontend or include_docs_site %} (backend{% if include_frontend %} + frontend{% endif %}{% if include_docs_site %} + docs-site{% endif %}){% endif %}
 ```
 
 ## Database & migrations
