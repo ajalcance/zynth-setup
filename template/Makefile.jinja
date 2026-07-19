@@ -66,6 +66,7 @@ fmt:
 	cd docs-site && npx prettier --write . >/dev/null
 {%- endif %}
 
-# Documentation consistency guards.
+# Documentation consistency guards + the production-readiness register.
 dod-check:
-	python3 scripts/dod-check.py
+	python3 scripts/dod-check.py && \
+	python3 scripts/prod_readiness.py

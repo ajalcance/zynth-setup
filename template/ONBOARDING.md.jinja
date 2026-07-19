@@ -118,6 +118,26 @@ gh secret set SCORECARD_TOKEN   # classic PAT, `repo` scope
 
 On a **public** repo the default `GITHUB_TOKEN` suffices and no PAT is needed.
 
+## 3b. Track your temporary stand-ins (`PROD-BLOCKER`)
+
+Scaffolding a project means deliberate stubs: a placeholder auth check to unblock frontend work,
+`CHANGE_ME` secrets in `.env`, a mutable image tag before the first real release. Each is fine
+while building and unacceptable in production — and a plain `TODO` comment is how they get
+forgotten. Mark them, and register them:
+
+```python
+# PROD-BLOCKER(auth-stub): dev-only bearer check; replace with real OIDC before launch
+```
+
+Then add a matching entry to the `BLOCKERS` tuple in `scripts/prod_readiness.py` (it ships
+empty). `make dod-check` verifies the two agree **in both directions** — a marker with no
+register entry fails, and a register entry whose marker is gone fails too, so the register can't
+rot into a list of things fixed months ago.
+
+It does **not** fail merely because blockers are open; that would be red for your entire build
+phase and train you to ignore it. To block a release on them, run
+`python3 scripts/prod_readiness.py --strict` in your release workflow.
+
 ## 4. Socket.dev — behavioural supply-chain analysis (recommended)
 
 CVE scanners (`pip-audit` / `npm audit`) only know *disclosed* vulnerabilities. Socket flags a

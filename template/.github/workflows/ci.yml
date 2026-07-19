@@ -197,6 +197,11 @@ jobs:
       - name: As-built + stale-reference guards
         run: python3 scripts/dod-check.py
 
+      # Consistency only — deliberately does NOT fail merely because open blockers exist, or a
+      # project would be red for its whole build phase and everyone would learn to ignore it.
+      - name: Production-readiness register matches the code
+        run: python3 scripts/prod_readiness.py
+
       # Every requirement must be exactly pinned ('==' or a hash) — no floating spec an agent or
       # a resolver could bump silently. JS is deterministic via `npm ci` + package-lock integrity.
       - name: Requirements are fully pinned
