@@ -90,9 +90,14 @@ uvicorn {{ python_package }}.main:app --reload
 
 ## 5. Git & branching
 
-- **Branches:** `main` (production) · `develop` (integration) · `feat/*`, `fix/*`, `refactor/*`,
-  `docs/*` off `develop`.
-- **Never commit directly to `main`.** PRs only; the PR template enforces the ritual.
+- **Trunk-based.** `main` is the single long-lived branch and is always releasable. Short-lived
+  `feat/*`, `fix/*`, `refactor/*`, `docs/*` branch off `main` and squash-merge back
+  (see [`docs/decisions/0005-trunk-based-branching.md`](docs/decisions/0005-trunk-based-branching.md)).
+- **Never push directly to `main`.** PRs only — enforced server-side by the branch ruleset, not
+  by convention. **One exception:** the very first commit of a freshly generated project is the
+  root commit and has nowhere else to go; push it, then work in branches from then on.
+- Release tags are cut **from `main`** — `release.yml` refuses to sign a tag that isn't an
+  ancestor of the default branch.
 - **Conventional Commits:** `type(scope): summary` — types: `feat`, `fix`, `refactor`, `docs`,
   `test`, `chore`, `security`, `perf`.
 - Keep commits focused: one logical change each.

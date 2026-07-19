@@ -13,3 +13,4 @@ silently.
 - [0002 — Defense-in-depth against malicious & AI-generated code](0002-defense-in-depth-against-malicious-code.md)
 - [0003 — Monorepo layout and backend skeleton conventions](0003-monorepo-layout-and-backend-skeleton.md)
 - [0004 — Agent-resistant guardrails](0004-agent-resistant-guardrails.md)
+- [0005 — Trunk-based branching](0005-trunk-based-branching.md)

@@ -17,7 +17,7 @@ name: CI
 # pull_request run. This roughly halves total runs.
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
   push:
     branches: [main]
 

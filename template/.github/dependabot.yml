@@ -11,6 +11,12 @@
 # The `docker` entries are load-bearing: base images are pinned by DIGEST, and a pinned
 # digest that is never updated silently rots into an unpatched image. Pinning without
 # Dependabot would be worse than not pinning at all.
+#
+# No `target-branch` is set anywhere here, deliberately: the project is trunk-based
+# (docs/decisions/0005-trunk-based-branching.md), so the default branch IS the integration
+# branch and Dependabot's default is correct. If you ever reintroduce a long-lived branch,
+# this file is one of the places that must learn about it — it silently assumed the wrong
+# thing last time precisely because it isn't a file anyone thinks of as branching-related.
 version: 2
 updates:
   - package-ecosystem: github-actions
