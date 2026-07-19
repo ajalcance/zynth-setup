@@ -41,7 +41,7 @@ Roadmap: [`docs/PLAN.md`](docs/PLAN.md).
 4. ✅ **Keep the as-built page true:** [`docs/architecture/current-state.md`](docs/architecture/current-state.md).
    If the change adds/moves/removes a module, route, stored shape, dependency, or the deploy
    shape → update it in the same PR. (`make dod-check` / CI `doc-guards` enforces that every
-   `backend/{{ python_package }}/` module + top-level dir is named there.)
+   `backend/{{ python_package }}/` module{% if include_frontend %}, every `frontend/` directory,{% endif %} + top-level dir is named there.)
    - **New design decision** (not just implementing an already-decided plan) → add an **ADR** in
      [`docs/decisions/`](docs/decisions/) (next number, template) and reconcile
      [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

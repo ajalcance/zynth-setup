@@ -3,9 +3,10 @@
 
 Three mechanical checks that catch documentation drift:
 
-1. **As-built coverage** — every module directory under ``backend/{{ python_package }}/`` and every
-   top-level project directory must be named in ``docs/architecture/current-state.md``.
-   Ship a component, mention it, or this fails.
+1. **As-built coverage** — every module directory under ``backend/{{ python_package }}/``, every
+   directory under ``frontend/`` (when that module is enabled), and every top-level project
+   directory must be named in ``docs/architecture/current-state.md``. Ship a component,
+   mention it, or this fails.
 2. **Stale references** — any repo-relative file path written in backticks in the docs
    must exist. Catches references to renamed/deleted files.
 3. **Release freshness** — the latest *released* version in ``CHANGELOG.md`` must be
@@ -27,6 +28,9 @@ ARCH = ROOT / "docs" / "architecture" / "current-state.md"
 
 # Top-level project directories that should be documented (skipped if absent).
 TOP_LEVEL_DIRS = ["backend", "frontend", "docs-site", "deploy", "scripts"]
+
+# Build output / vendored dirs inside frontend/ that are not part of the as-built surface.
+FRONTEND_SKIP_DIRS = {"node_modules", "public", "coverage", "out", "build"}
 
 DOC_GLOBS = ["docs/**/*.md", "*.md", ".github/**/*.md", ".claude/**/*.md"]
 
@@ -67,6 +71,33 @@ def check_as_built(errors: list[str]) -> None:
                         f"current-state.md does not mention module "
                         f"'backend/{APP_PKG}/{sub.name}/' — document it in the As-Built section"
                     )
+
+
+def check_frontend_as_built(errors: list[str]) -> None:
+    """Same freshness rule as backend/{{ python_package }}/, applied to frontend/.
+
+    Without this, only a wholesale removal of ``frontend/`` was caught (it is a top-level dir);
+    new panels, hooks or lib splits inside it drifted from the as-built page by discipline
+    alone. That is the same class of drift this guard exists to prevent, left unprotected on
+    one of the two application layers. No-ops when the frontend module isn't enabled.
+    """
+    if not ARCH.is_file():
+        return  # already reported by check_as_built
+    arch = ARCH.read_text()
+    fe = ROOT / "frontend"
+    if not fe.is_dir():
+        return
+    for sub in sorted(fe.iterdir()):
+        if not sub.is_dir() or sub.name.startswith(".") or sub.name in FRONTEND_SKIP_DIRS:
+            continue
+        # Require the QUALIFIED path token: a bare 'app/' would match 'backend/app/' and pass
+        # spuriously — the same substring trap the backend check above guards against.
+        token = f"frontend/{sub.name}"
+        if token not in arch:
+            errors.append(
+                f"current-state.md does not mention '{token}/' — document it in the As-Built "
+                f"section (write the path as 'frontend/{sub.name}/')"
+            )
 
 
 def check_stale_refs(errors: list[str]) -> None:
@@ -115,6 +146,7 @@ def check_release_consistency(errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     check_as_built(errors)
+    check_frontend_as_built(errors)
     check_stale_refs(errors)
     check_release_consistency(errors)
     if errors:
