@@ -28,6 +28,19 @@ Applies to {{ 'frontend/ and docs-site/' if (include_frontend and include_docs_s
   `core-web-vitals` subset of `jsx-a11y`).
 - **Components:** Server Components by default; add `"use client"` only where interactivity
   requires it. Keep components small and colocate a component with what only it uses.
+{%- if include_frontend %}
+- **HTTP goes through `lib/api-client.ts`**, never a bare `fetch` at a call site — that is how a
+  codebase ends up with a dozen error behaviours and no timeouts. It retries **idempotent methods
+  only**; if a mutation must be retried, make it idempotent first.
+- **Every route that can fail independently gets an `error.tsx`.** One throwing component must
+  not blank the page.
+- **Security headers live in `next.config.ts`.** Known gap: `script-src` still allows
+  `'unsafe-inline'` because Next's bootstrap requires it without a nonce — add nonce middleware
+  before this app handles sensitive data. COEP is intentionally off (it breaks cross-origin
+  assets and is only needed for cross-origin isolation).
+- **Watch the bundle budget** (`npm run bundle-size`). Raise `BUNDLE_MAX_KB` deliberately, with a
+  reason — not reflexively when it goes red.
+{%- endif %}
 - **Never interpolate a copier value (project name, slug) into a formatter-checked line.** A long
   or quoted value can push the line past the prettier/ruff limit or break the syntax on a fresh
   generation. Put anything that must vary in a small JSON module and import it instead — see

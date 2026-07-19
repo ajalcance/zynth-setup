@@ -28,9 +28,11 @@ backend/                    FastAPI backend (Python 3.12)
     command/                cold store (events) + hash-chained audit_log + detection/control catalogs
 {% endif %}  migrations/               Alembic (async env)
   tests/                    pytest (in-memory SQLite) — health smoke tests
-{% if include_frontend %}frontend/                   Next.js app
-  frontend/app/             App Router routes + layout
-  frontend/tests/           vitest + Testing Library smoke tests
+{% if include_frontend %}frontend/                   Next.js app (security headers, error boundaries, bundle budget)
+  frontend/app/             App Router routes + layout + error.tsx / global-error.tsx boundaries
+  frontend/lib/             typed API client (retry/error contract)
+  frontend/scripts/         check-bundle-size.mjs (client JS budget)
+  frontend/tests/           vitest + Testing Library
 {% endif %}{% if include_docs_site %}docs-site/                  documentation site
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
 {% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · bootstrap-repo.sh
@@ -45,6 +47,10 @@ docs/                       OVERVIEW (plain-language start) / GLOSSARY / ARCHITE
 - **Database layer:** SQLAlchemy 2.0 declarative base + async engine/session (`db/`); Alembic ready.
 - **Gates:** ruff / black / mypy --strict / bandit / pip-audit / pytest, pre-commit (gitleaks +
   private-key detection), Semgrep dangerous-ops, and the doc-consistency guards.
+{% if include_frontend %}- **Frontend chassis:** baseline security headers (CSP, COOP, CORP, HSTS, Permissions-Policy) in
+  `next.config.ts`; route + root error boundaries for fault isolation; a typed API client that
+  retries only idempotent methods; and a client bundle-size budget enforced in CI.
+{% endif %}
 {% if include_claude_hooks %}- **Local agent ergonomics:** Claude Code session hooks (`.claude/settings.json`) auto-format
   backend Python on write and block footguns (direct push to `main`, `--no-verify`, dangerous
   `rm -rf`) and secret writes. These shift the CI guards left; **CI stays the fail-closed backstop.**

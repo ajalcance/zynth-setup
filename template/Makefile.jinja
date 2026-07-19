@@ -37,7 +37,8 @@ frontend:
 	npx tsc --noEmit && \
 	npm audit --audit-level=high && \
 	npm test --if-present && \
-	npm run build
+	npm run build && \
+	npm run bundle-size
 {% endif %}{% if include_docs_site %}
 # ---- Docs site (Next.js) ----
 docs-site:

@@ -140,6 +140,7 @@ jobs:
           npm audit --audit-level=high
           npm test --if-present
           npm run build
+          npm run bundle-size
 
       - name: Docs-site gate
         if: matrix.name == 'full'

@@ -149,6 +149,8 @@ jobs:
       # caught post-merge at image-build time (or never). Keep this list in sync.
       - name: Production build (next build)
         run: npm run build
+      - name: Client bundle-size budget
+        run: npm run bundle-size
 
   # ---- Docs site: lint + build (only if docs-site/ or docs content changed) ----
   docs:
