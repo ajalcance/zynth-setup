@@ -6,6 +6,9 @@ Three diff-based checks against the PR's base branch (no stored baseline to tamp
 1. **Suppression ratchet** — the PR must not add net-new bypass markers
    (``# noqa``, ``# type: ignore``, ``# nosemgrep``, ``# pragma: no cover``,
    ``eslint-disable``, ``@ts-ignore``, ``@ts-nocheck``). Removing them is always fine.
+   Scoped to source files (``.py``/``.ts``/``.tsx``/``.js``/``.jsx``, excluding ``docs/``)
+   so that *documenting* a marker — an ADR explaining why blanket-disabling is banned —
+   is not counted the same as *adding* one.
 2. **Test presence** — if package source changed, a test must have changed too
    (catches "delete/hollow the tests so coverage/pytest pass").
 3. **Guard-file change** — the PR must not touch a file that DEFINES a guard (this script,
@@ -41,6 +44,10 @@ BYPASS_MARKERS = (
 )
 _MARKER_RE = re.compile("|".join(BYPASS_MARKERS))
 
+# Only real source files can carry a real suppression directive. Prose that merely NAMES a
+# marker (docs, ADRs, markdown) must not count — see check_suppressions().
+SUPPRESSIBLE_RE = re.compile(r"^(?!docs/).*\.(py|ts|tsx|js|jsx|mjs|cjs)$")
+
 # A changed .py here counts as "source"; tests/migrations don't.
 SRC_RE = re.compile(r"^backend/(?!tests/|migrations/).*\.py$")
 TEST_RE = re.compile(r"^backend/tests/.*\.py$")
@@ -68,9 +75,21 @@ def _diff(base: str) -> str:
 
 
 def check_suppressions(base: str, errors: list[str]) -> None:
+    # Scoped to source files, mirroring check_tests() below. Without this the scan counts a
+    # suppression marker NAMED IN PROSE (an ADR explaining why blanket-disabling is banned, a
+    # standards doc listing what not to add) exactly the same as a real directive — so writing
+    # documentation about suppressions trips the guard that exists to catch adding them. That
+    # pushes toward either routinely using the 'allow-suppressions' label (meant to be rare and
+    # deliberate) or contorting the docs to avoid literal strings. Both are worse outcomes.
     added = removed = 0
+    current_file = ""
     for line in _diff(base).splitlines():
-        if line.startswith("+++") or line.startswith("---"):
+        if line.startswith("+++"):
+            current_file = line[6:] if line.startswith("+++ b/") else ""
+            continue
+        if line.startswith("---") or line.startswith("diff ") or line.startswith("@@"):
+            continue
+        if not SUPPRESSIBLE_RE.match(current_file):
             continue
         if line.startswith("+") and _MARKER_RE.search(line):
             added += 1
