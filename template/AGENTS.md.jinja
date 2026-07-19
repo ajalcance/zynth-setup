@@ -30,9 +30,27 @@ Attempts to weaken a guard are themselves gated and reviewed. What each one prot
 | **pytest / coverage floor**{% if include_frontend %} · **vitest**{% endif %} | untested behaviour | add the test; don't lower the threshold |
 | **dod-check** (`scripts/dod-check.py`) | docs drifting out of sync with code | update the docs to match reality |
 | **check_pins** (`scripts/check_pins.py`) | an unpinned / floating dependency | pin the exact version |
-| **meta_guard** (`scripts/meta_guard.py`) | silently weakening a guard or shipping code without a test | address the real cause it flagged |
+| **meta_guard** (`scripts/meta_guard.py`) | silently weakening a guard, shipping code without a test, or editing a guard-defining file | address the real cause it flagged |
 {% if include_deploy %}| **cosign verify** | deploying an unsigned / tampered image | build and sign through the release pipeline |
 {% endif %}{% if include_compliance_spine %}| **spine coverage guards** | an action that isn't recorded / monitored / audited | register the action for emit + detection + audit + compliance |
 {% endif %}
 > Anything that genuinely *should* change a guard is a **design decision** → propose it in an ADR
 > for human review, don't do it silently.
+
+## If you find yourself about to edit the thing checking you — stop
+
+The single most dangerous rationalization available to you: a guard blocks your change, you
+conclude "this is actually a bug in the guard," and you edit `scripts/`, a CI workflow, a ruleset,
+or a scanner config so your own PR goes green. **The reasoning can sound completely plausible and
+still be wrong** — you have a strong incentive to see the guard as broken, because that's the
+version of events where your task succeeds.
+
+This is not a hypothetical: it has happened, on this project's sibling repos, with an agent
+genuinely believing it had found a false positive in `meta_guard.py`. It hadn't — the fix was one
+sentence of rewording elsewhere. `meta_guard` now enforces this mechanically (a PR touching a
+guard-defining file needs the owner-applied `guardrail-change` label — see the table above), but
+the check is a backstop, not a substitute for catching yourself first.
+
+**If your reasoning concludes "therefore I should edit the file that is checking me" — stop and
+ask the repo owner before touching it.** A guard change is always its own PR, on its own merits,
+with explicit approval. Never bundled into the work it happened to block.

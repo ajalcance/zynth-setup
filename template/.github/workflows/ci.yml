@@ -206,16 +206,18 @@ jobs:
       # # pragma: no cover, or change code without a test. This diff-based check fails on net-new
       # suppressions or missing tests. Escape hatches are explicit PR labels a human must apply —
       # so an override is always a conscious act, never silent. See docs/decisions/0004.
-      - name: Meta-guard (suppression ratchet + test presence)
+      - name: Meta-guard (suppression ratchet + test presence + guard-file change)
         if: github.event_name == 'pull_request'
         env:
           ALLOW_SUPPRESSIONS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-suppressions') }}
           ALLOW_MISSING_TESTS: ${{ contains(github.event.pull_request.labels.*.name, 'no-tests-needed') }}
+          ALLOW_GUARDRAIL_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'guardrail-change') }}
         run: |
           git fetch -q origin "${{ github.base_ref }}"
           flags=""
           [ "$ALLOW_SUPPRESSIONS" = "true" ] && flags="$flags --allow-suppressions"
           [ "$ALLOW_MISSING_TESTS" = "true" ] && flags="$flags --allow-missing-tests"
+          [ "$ALLOW_GUARDRAIL_CHANGE" = "true" ] && flags="$flags --allow-guardrail-change"
           python3 scripts/meta_guard.py --base "origin/${{ github.base_ref }}" $flags
 
       # Advisory only — a warning annotation, never a failure.
