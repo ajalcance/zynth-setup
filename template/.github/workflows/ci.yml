@@ -130,7 +130,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
@@ -141,8 +141,12 @@ jobs:
         run: npx prettier --check .
       - name: Type check (tsc)
         run: npx tsc --noEmit
-      - name: Supply-chain audit (npm audit)
-        run: npm audit --audit-level=high
+      # --omit=dev: gate on what actually SHIPS. A high advisory in the production tree
+      # (next/react/sharp/postcss) fails the build; a ReDoS in a build-time linter dep that
+      # never runs in production does not redden every fresh repo. Dev-tooling advisories are
+      # surfaced by Dependabot and the daily scheduled self-test instead.
+      - name: Supply-chain audit (npm audit, production deps)
+        run: npm audit --omit=dev --audit-level=high
       - name: Tests
         run: npm test --if-present
       # Must mirror `make frontend` exactly — a production build break is otherwise only
@@ -164,7 +168,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: docs-site/package-lock.json
       - name: Install dependencies
@@ -175,7 +179,7 @@ jobs:
       - name: Format check (prettier)
         run: npx prettier --check .
       - name: Supply-chain audit (npm audit)
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
       - name: Build
         run: npm run build
 

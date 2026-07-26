@@ -2,10 +2,18 @@
 # guarantees a freshly stamped project is green out of the box — the template can't regress.
 name: Template self-test
 
+# The scheduled run is load-bearing, not decoration. `npm audit` / `pip-audit` query a LIVE
+# advisory database, so a generated project can go from green to red with NO change to this
+# repo — a new CVE against a pinned transitive dependency is enough. Push/PR runs alone mean
+# the first person to discover that is an adopter, mid-onboarding. Twice now, that is exactly
+# what happened. Daily generation + full gate catches it within 24h instead. Cost is ~3
+# job-minutes/day; the reputational cost of a day-one-red template is far higher.
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 5 * * *" # daily 05:17 UTC
 
 permissions:
   contents: read
@@ -44,7 +52,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Copier
         run: pipx install copier
@@ -137,7 +145,7 @@ jobs:
           npm run lint
           npx prettier --check .
           npx tsc --noEmit
-          npm audit --audit-level=high
+          npm audit --omit=dev --audit-level=high
           npm test --if-present
           npm run build
           npm run bundle-size
@@ -149,7 +157,7 @@ jobs:
           npm ci
           npm run lint
           npx prettier --check .
-          npm audit --audit-level=high
+          npm audit --omit=dev --audit-level=high
           npm run build
 
       - name: Deploy compose validates

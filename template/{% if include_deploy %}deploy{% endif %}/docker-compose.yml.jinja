@@ -18,8 +18,10 @@ services:
     image: caddy:2.10-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      # Loopback by default so a local `docker compose up` is NOT published to the LAN.
+      # On the server, set BIND_HOST=0.0.0.0 in .env to accept public traffic.
+      - "${BIND_HOST:-127.0.0.1}:80:80"
+      - "${BIND_HOST:-127.0.0.1}:443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

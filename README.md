@@ -138,7 +138,28 @@ Copier records your answers in `.copier-answers.yml`, so you can pull framework 
 copier update --trust   # in the generated project's repo root
 ```
 
+For this to work, `.copier-answers.yml` must point at the **GitHub source**, not a local path.
+Always generate from `gh:{{ github_owner }}/zynth-setup` (a full clone or the `gh:` shorthand) —
+generating from a temporary local clone records that path as `_src_path`, and updates break once
+the directory is gone. If you must use a local clone, do a **full** clone, not a shallow one, or
+Copier can't reason about template version history.
+
 See [`MAINTAINING.md`](MAINTAINING.md) for how the template is structured and how to evolve it.
+
+## Adopting into an existing (non-empty) repository
+
+Copier's post-generation tasks assume a fresh, empty destination — they run `git init` and stage
+everything. To add the framework to an existing repo, generate into a **separate empty directory**
+first, review the output, then copy in what you want (excluding `.git/` and any build artifacts).
+`make check` runs the same either way.
+
+## Local TLS note (deploy module)
+
+The deploy stack's Caddy uses `tls internal` — a self-signed local certificate — so the **first**
+browser visit to a local `https://` URL shows a trust warning; accept it for local use. Production
+behind a real domain gets a genuine certificate automatically. The ingress binds to `127.0.0.1` by
+default (set `BIND_HOST=0.0.0.0` in `.env` to expose it), so a local `docker compose up` is not
+reachable from your network.
 
 ## License
 

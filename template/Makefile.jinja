@@ -12,10 +12,10 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help check backend fmt test lint dod-check{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+.PHONY: help preflight check backend fmt test lint dod-check{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: check | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
+	@echo "Targets: preflight | check | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 backend:
@@ -35,7 +35,7 @@ frontend:
 	npm run lint && \
 	npx prettier --check . && \
 	npx tsc --noEmit && \
-	npm audit --audit-level=high && \
+	npm audit --omit=dev --audit-level=high && \
 	npm test --if-present && \
 	npm run build && \
 	npm run bundle-size
@@ -45,11 +45,15 @@ docs-site:
 	cd docs-site && \
 	npm run lint && \
 	npx prettier --check . && \
-	npm audit --audit-level=high && \
+	npm audit --omit=dev --audit-level=high && \
 	npm run build
 {% endif %}
-# Full gate — everything.
-check: backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+# Environment diagnostic — what `make check` needs, and how to install anything missing.
+preflight:
+	python3 scripts/preflight.py
+
+# Full gate — everything. preflight runs first so a missing toolchain is named, not cryptic.
+check: preflight backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 # Convenience aliases referenced in CLAUDE.md and the PR template.
 test:

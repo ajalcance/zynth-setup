@@ -1,0 +1,11 @@
+# Keep the build context small. node_modules is reinstalled inside the image from the
+# lockfile, and .next from the host would otherwise shadow the image's own build output.
+node_modules/
+.next/
+out/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+npm-debug.log*

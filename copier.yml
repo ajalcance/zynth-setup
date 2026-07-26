@@ -126,9 +126,10 @@ solo_maintainer:
 include_claude_hooks:
   type: bool
   help: >-
-    Include Claude Code session hooks (.claude/settings.json)? Local ergonomics
-    that shift the CI guards left — auto-format backend Python on write, and
-    block footguns / secret writes. CI remains the fail-closed backstop.
+    Include Claude Code session HOOKS (.claude/settings.json + .claude/hooks/)? Local
+    ergonomics that shift the CI guards left — auto-format on write, block footguns /
+    secret writes. This gates ONLY the hooks: CLAUDE.md, AGENTS.md and the /dod command
+    are the universal AI working contract and always ship. CI is the fail-closed backstop.
   default: true
 
 # --- Post-generation setup (runs only with `copier copy --trust`) -------------
@@ -152,23 +153,26 @@ _tasks:
     python3 -m venv backend/.venv
     && backend/.venv/bin/pip install -q -r backend/requirements.txt -r backend/requirements-dev.txt pre-commit
     && backend/.venv/bin/pre-commit install
-    || echo '⚠  Skipped Python setup (offline?). Set it up manually — see the README Quick start.'
+    || echo '❌ SETUP INCOMPLETE — backend deps did not install (offline?). Run `make preflight` for the exact fix.'
   # Invariant: whatever `make check` runs, --trust must have provisioned. `make check` includes
   # the frontend / docs-site gates when those modules are enabled, so their node_modules must
   # exist — otherwise the first `make check` dies with `sh: eslint: command not found`.
   - >-
     {% if include_frontend %}cd frontend && npm ci --no-audit --no-fund
-    || echo '⚠  Skipped frontend npm install (offline?). Run: cd frontend && npm ci'{% else %}true{% endif %}
+    || echo '❌ SETUP INCOMPLETE — frontend deps did not install (offline?). Run `make preflight` for the exact fix.'{% else %}true{% endif %}
   - >-
     {% if include_docs_site %}cd docs-site && npm ci --no-audit --no-fund
-    || echo '⚠  Skipped docs-site npm install (offline?). Run: cd docs-site && npm ci'{% else %}true{% endif %}
+    || echo '❌ SETUP INCOMPLETE — docs-site deps did not install (offline?). Run `make preflight` for the exact fix.'{% else %}true{% endif %}
 
 _message_after_copy: |
   ✅ {{ project_name }} scaffolded.
 
   Next steps (run from the project root):
-    cd backend && source .venv/bin/activate    # venv is created if you used --trust
-    cd .. && make check && make dod-check       # the full gate — green on a fresh project
+    make preflight                              # confirms the toolchain installed correctly
+    make check && make dod-check                # the full gate — green on a fresh project
+
+  Setup is best-effort so an offline generation still works. If you saw a
+  "SETUP INCOMPLETE" line above, `make preflight` prints exactly what to run.
 
   If you generated without --trust, set up the venv manually (see the README Quick start).
   Review the staged files, then make your first commit.

@@ -1,0 +1,19 @@
+# Keep the build context small and avoid shipping local state into an image.
+# Without this the daemon receives .venv, caches and tests — slow builds, and a real risk
+# of baking local artifacts (or a stray .env) into a layer.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+tests/
+.env
+.env.*
+!.env.example

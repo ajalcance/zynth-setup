@@ -48,13 +48,11 @@ function backoffMs(attempt: number): number {
 }
 
 async function once<T>(path: string, options: RequestOptions): Promise<T> {
-  const {
-    json,
-    timeoutMs = 10_000,
-    retries: _retries,
-    headers,
-    ...init
-  } = options;
+  // `retries` is consumed by request() below; strip it here so it never reaches fetch(),
+  // without binding an unused name (which eslint flags, and the gate now fails on warnings).
+  const { json, timeoutMs = 10_000, headers, ...rest } = options;
+  const init: Omit<typeof rest, "retries"> = rest;
+  delete (init as { retries?: number }).retries;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 

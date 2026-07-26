@@ -6,7 +6,7 @@ How to set up, run, test, branch, and ship in {{ project_name }}.
 
 - Python 3.12+
 {%- if include_frontend or include_docs_site %}
-- Node 20+ (for {{ 'frontend/ and docs-site/' if (include_frontend and include_docs_site) else ('frontend/' if include_frontend else 'docs-site/') }})
+- Node 22 (pinned in `.nvmrc`; run `nvm use`) — for {{ 'frontend/ and docs-site/' if (include_frontend and include_docs_site) else ('frontend/' if include_frontend else 'docs-site/') }}
 {%- endif %}
 - (optional) Docker + Docker Compose for the full stack
 - `pre-commit` (`pip install pre-commit`)
