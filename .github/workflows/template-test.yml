@@ -45,6 +45,8 @@ jobs:
     name: generate (${{ matrix.name }})
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0 # tags must be visible for the copier-update gate
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -167,3 +169,66 @@ jobs:
           cp ../.env.example ../.env
           docker compose --env-file ../.env config >/dev/null                      # local (build override)
           docker compose -f docker-compose.yml --env-file ../.env config >/dev/null # prod (signed images only)
+
+      # ---- Release gate 1: images build on BOTH architectures ----
+      # The deploy path ships the arm64 image too; a native dependency (sharp) or a wrong base
+      # digest can compile on amd64 and fail on arm64. QEMU makes the arm64 build slow, so this
+      # runs on push-to-main + the daily schedule, not on every PR — main stays release-ready
+      # without taxing PR feedback. `type=cacheonly` builds both arches and discards the output
+      # (a multi-arch manifest can't be `--load`ed), which is exactly the "does it build" check.
+      - name: Set up QEMU (cross-arch emulation)
+        if: matrix.name == 'full' && github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - name: Set up Buildx
+        if: matrix.name == 'full' && github.event_name != 'pull_request'
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Backend image builds on amd64 + arm64
+        if: matrix.name == 'full' && github.event_name != 'pull_request'
+        working-directory: /tmp/gen
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --output type=cacheonly backend
+      - name: Frontend image builds on amd64 + arm64
+        if: matrix.name == 'full' && github.event_name != 'pull_request'
+        working-directory: /tmp/gen
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --output type=cacheonly frontend
+
+      # ---- Release gate 2: `copier update` from the previous release is clean ----
+      # Proves a real adopter can pull framework upgrades without losing their own edits. Skips
+      # until a release tag exists (the first release has no predecessor), and no-ops if HEAD is
+      # the tagged commit itself (empty diff). After v1.0.0, every later change is exercised here.
+      - name: Copier update from previous release preserves user files
+        if: matrix.name == 'full'
+        run: |
+          prev="$(git -C "$GITHUB_WORKSPACE" tag --list 'v*' --sort=-version:refname | head -n1)"
+          if [ -z "$prev" ]; then
+            echo "No previous release tag yet — skipping update gate (first release)."
+            exit 0
+          fi
+          echo "Updating a project generated from $prev up to the current tree..."
+          rm -rf /tmp/upd
+          copier copy --defaults --trust --vcs-ref "$prev" \
+            --data project_name="Update Test" \
+            --data github_owner="ci" --data author_name="CI" --data author_email="ci@example.com" \
+            --data include_frontend=true --data include_docs_site=true \
+            --data include_deploy=true --data server_host=example.test \
+            --data include_compliance_spine=true \
+            "$GITHUB_WORKSPACE" /tmp/upd
+          cd /tmp/upd
+          git init -q
+          git -c user.email=ci@example.com -c user.name=CI add -A
+          git -c user.email=ci@example.com -c user.name=CI commit -qm "generated from $prev"
+          # A user-owned edit that an update must preserve (a 3-way merge, not a clobber).
+          printf '\n<!-- USER-OWNED EDIT: must survive copier update -->\n' >> docs/PLAN.md
+          git -c user.email=ci@example.com -c user.name=CI commit -aqm "user edit"
+          copier update --defaults --trust --vcs-ref HEAD --conflict inline
+          grep -q "USER-OWNED EDIT" docs/PLAN.md \
+            || { echo "::error::copier update discarded a user-owned edit"; exit 1; }
+          # A `.rej`/`.orig` file or an inline conflict marker means a merge the adopter must
+          # resolve — acceptable, but the gate should surface it rather than pass silently.
+          if git grep -l -e '<<<<<<<' -e '>>>>>>>' -- . >/dev/null 2>&1; then
+            echo "::warning::copier update produced conflict markers to resolve (expected on overlapping edits)"
+          fi
+          echo "copier-update gate: OK — update from $prev applied, user edit preserved."
