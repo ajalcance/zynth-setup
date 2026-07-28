@@ -200,6 +200,14 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Negative tests proving each guard CAN fail. Runs BEFORE the guards themselves: if a
+      # guard has silently stopped working, the fault tests say so by name, rather than every
+      # downstream check quietly passing on an input it never really inspected.
+      - name: Guard fault tests
+        run: |
+          pip install -q pyyaml pytest
+          python3 -m pytest tests/guards -q
+
       - name: As-built + stale-reference guards
         run: python3 scripts/dod-check.py
 

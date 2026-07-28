@@ -81,6 +81,12 @@ jobs:
           .venv/bin/pip-audit -r requirements.txt
           .venv/bin/pytest -q --cov
 
+      - name: Guard fault tests (each guard can still fail)
+        working-directory: /tmp/gen
+        run: |
+          pip install -q pyyaml pytest
+          python -m pytest tests/guards -q
+
       - name: Doc-consistency guards
         working-directory: /tmp/gen
         run: python scripts/dod-check.py

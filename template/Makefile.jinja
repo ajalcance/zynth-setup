@@ -12,10 +12,10 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight check backend fmt test lint dod-check{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+.PHONY: help preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: preflight | check | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
+	@echo "Targets: preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 backend:
@@ -52,8 +52,13 @@ docs-site:
 preflight:
 	python3 scripts/preflight.py
 
+# Negative tests proving each guard in scripts/ CAN fail. A guard that silently stops working
+# reports green while checking nothing — these make that a test failure. See tests/guards/README.md.
+guard-tests:
+	backend/.venv/bin/pytest tests/guards -q
+
 # Full gate — everything. preflight runs first so a missing toolchain is named, not cryptic.
-check: preflight backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+check: preflight guard-tests backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 # Convenience aliases referenced in CLAUDE.md and the PR template.
 test:

@@ -48,6 +48,7 @@ is concentrated on **authority and policy** changes while routine work is checke
 | CI | Blocking SAST (Semgrep dangerous-ops) + advisory community scan | `[CI]` |
 | CI | Path-aware backend{% if include_frontend %}/frontend{% endif %}{% if include_docs_site %}/docs-site{% endif %} suites | `[CI]` |
 | CI | Static policy guards (`dod-check`, `check_pins`, `meta_guard`, `prod_readiness`) | `[CI]` |
+| CI | **Guard fault tests** — negative tests proving each guard can still fail | `[CI]` (`tests/guards/`) |
 | CI | Required aggregate `ci-complete` | `[CI]` |
 | CI | Semantic correctness of a change | `[Review]` — human judgment |
 | CI | Workflow + shell linting (actionlint / shellcheck) | `[Phase gate — v2.0]` |
