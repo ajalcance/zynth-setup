@@ -12,7 +12,23 @@ Claude Code reads it automatically each session. **Follow it without exception.*
 {{ project_description or project_name + " — describe the project here." }}
 Plain-language map (start here if new): [`docs/OVERVIEW.md`](docs/OVERVIEW.md); jargon in
 [`docs/GLOSSARY.md`](docs/GLOSSARY.md). Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-Roadmap: [`docs/PLAN.md`](docs/PLAN.md).
+Roadmap: [`docs/PLAN.md`](docs/PLAN.md). How the whole control system fits together:
+[`docs/ENGINEERING_PROCESS.md`](docs/ENGINEERING_PROCESS.md).
+
+### Source of truth — when records disagree
+
+The repository, not a chat transcript, is the durable memory. When two records conflict, trust them
+in this order, and **treat anything from a session/assistant as a hint to reverify, never authority**:
+
+1. **Running code, migrations, tests, and live GitHub / repository settings** — reality outranks any doc.
+2. **[`docs/architecture/current-state.md`](docs/architecture/current-state.md)** — what exists now (as-built).
+3. **[`docs/decisions/`](docs/decisions/)** — why durable decisions were made (ADRs).
+4. **[`docs/PLAN.md`](docs/PLAN.md)** — completed / current / next work.
+5. **[`docs/LESSONS.md`](docs/LESSONS.md)** — dated, reusable learning and gotchas.
+6. **[`CHANGELOG.md`](CHANGELOG.md)** — user-visible history.
+7. **Assistant / session notes** — hints only; reverify against the above before acting.
+
+Don't copy a repository fact into a note — a second copy is a competing truth that drifts.
 
 ---
 
@@ -91,7 +107,8 @@ uvicorn {{ python_package }}.main:app --reload
 ## 5. Git & branching
 
 - **Trunk-based.** `main` is the single long-lived branch and is always releasable. Short-lived
-  `feat/*`, `fix/*`, `refactor/*`, `docs/*` branch off `main` and squash-merge back
+  `feat/*`, `fix/*`, `security/*`, `refactor/*`, `docs/*`, `chore/*` branch off `main` and
+  squash-merge back
   (see [`docs/decisions/0005-trunk-based-branching.md`](docs/decisions/0005-trunk-based-branching.md)).
 - **Never push directly to `main`.** PRs only — enforced server-side by the branch ruleset, not
   by convention. **One exception:** the very first commit of a freshly generated project is the

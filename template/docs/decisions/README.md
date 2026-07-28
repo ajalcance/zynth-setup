@@ -14,3 +14,4 @@ silently.
 - [0003 — Monorepo layout and backend skeleton conventions](0003-monorepo-layout-and-backend-skeleton.md)
 - [0004 — Agent-resistant guardrails](0004-agent-resistant-guardrails.md)
 - [0005 — Trunk-based branching](0005-trunk-based-branching.md)
+- [0006 — Engineering process and control system](0006-engineering-process-and-control-system.md)
