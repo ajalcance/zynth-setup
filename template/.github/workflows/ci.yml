@@ -200,6 +200,21 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Workflow linting. Pinned by version AND verified by checksum — the same supply-chain
+      # discipline applied to every other dependency here. Catches invalid `needs:` references,
+      # bad `${{ }}` expressions and deprecated action inputs that YAML validity alone misses.
+      - name: Lint GitHub Actions workflows (actionlint)
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
+          echo "${ACTIONLINT_SHA256}  ${tarball}" | sha256sum --check --status
+          tar -xzf "$tarball" actionlint
+          ./actionlint -color
+          rm -f actionlint "$tarball"
+
       # Negative tests proving each guard CAN fail. Runs BEFORE the guards themselves: if a
       # guard has silently stopped working, the fault tests say so by name, rather than every
       # downstream check quietly passing on an input it never really inspected.
@@ -225,19 +240,25 @@ jobs:
       # # pragma: no cover, or change code without a test. This diff-based check fails on net-new
       # suppressions or missing tests. Escape hatches are explicit PR labels a human must apply —
       # so an override is always a conscious act, never silent. See docs/decisions/0004.
-      - name: Meta-guard (suppression ratchet + test presence + guard-file change)
+      - name: Meta-guard (suppressions, tests, guard files, sensitive paths, exemptions)
         if: github.event_name == 'pull_request'
         env:
           ALLOW_SUPPRESSIONS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-suppressions') }}
           ALLOW_MISSING_TESTS: ${{ contains(github.event.pull_request.labels.*.name, 'no-tests-needed') }}
           ALLOW_GUARDRAIL_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'guardrail-change') }}
+          ALLOW_SENSITIVE: ${{ contains(github.event.pull_request.labels.*.name, 'sensitive-change-approved') }}
+          ALLOW_EXEMPTIONS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-exemptions') }}
         run: |
           git fetch -q origin "${{ github.base_ref }}"
-          flags=""
-          [ "$ALLOW_SUPPRESSIONS" = "true" ] && flags="$flags --allow-suppressions"
-          [ "$ALLOW_MISSING_TESTS" = "true" ] && flags="$flags --allow-missing-tests"
-          [ "$ALLOW_GUARDRAIL_CHANGE" = "true" ] && flags="$flags --allow-guardrail-change"
-          python3 scripts/meta_guard.py --base "origin/${{ github.base_ref }}" $flags
+          # An array, not a string: an unquoted "$flags" relies on word-splitting (SC2086) and
+          # would break the moment a flag ever contained a space.
+          flags=()
+          if [ "$ALLOW_SUPPRESSIONS" = "true" ]; then flags+=(--allow-suppressions); fi
+          if [ "$ALLOW_MISSING_TESTS" = "true" ]; then flags+=(--allow-missing-tests); fi
+          if [ "$ALLOW_GUARDRAIL_CHANGE" = "true" ]; then flags+=(--allow-guardrail-change); fi
+          if [ "$ALLOW_SENSITIVE" = "true" ]; then flags+=(--allow-sensitive); fi
+          if [ "$ALLOW_EXEMPTIONS" = "true" ]; then flags+=(--allow-exemptions); fi
+          python3 scripts/meta_guard.py --base "origin/${{ github.base_ref }}" "${flags[@]}"
 
       # Advisory only — a warning annotation, never a failure.
       - name: Docs-sync nudge — code changed without a CHANGELOG entry

@@ -11,6 +11,16 @@ repos:
     hooks:
       - id: gitleaks
 
+  # Shell linting as a pre-commit hook rather than a new CI job: it then runs locally on commit
+  # AND in the existing `hygiene` job, adding real coverage at zero extra billable minutes (job
+  # COUNT is what GitHub charges for). Workflow linting (actionlint) is a CI-only step instead —
+  # its pip package builds from source and needs Go, which would break commits for any adopter
+  # without a Go toolchain.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:

@@ -48,10 +48,11 @@ is concentrated on **authority and policy** changes while routine work is checke
 | CI | Blocking SAST (Semgrep dangerous-ops) + advisory community scan | `[CI]` |
 | CI | Path-aware backend{% if include_frontend %}/frontend{% endif %}{% if include_docs_site %}/docs-site{% endif %} suites | `[CI]` |
 | CI | Static policy guards (`dod-check`, `check_pins`, `meta_guard`, `prod_readiness`) | `[CI]` |
+| CI | Anti-weakening ratchet — suppressions, missing tests, guard-file edits, sensitive paths, lowered thresholds | `[CI]` (`meta_guard`) |
 | CI | **Guard fault tests** — negative tests proving each guard can still fail | `[CI]` (`tests/guards/`) |
 | CI | Required aggregate `ci-complete` | `[CI]` |
 | CI | Semantic correctness of a change | `[Review]` — human judgment |
-| CI | Workflow + shell linting (actionlint / shellcheck) | `[Phase gate — v2.0]` |
+| CI | Workflow linting (actionlint, pinned + checksummed) and shell linting (shellcheck) | `[CI]` |
 | Release | Tag must be an ancestor of `main`; cosign-signed images by digest{% if include_deploy %}; verified on the host by `deploy/verify.sh`{% endif %} | `[CI]`{% if not include_deploy %} (enable the deploy module){% endif %} |
 | Release | Build-once candidate, SBOM + provenance, evidence-bound signed manifest, promote-without-rebuild | `[Phase gate — v2.0]` |
 | Release | Production readiness holds (register your own: IAM, approval separation, operational readiness) | `[CI]` mechanism live; the register ships **empty** — see §6 |
@@ -81,8 +82,8 @@ blocked change fixes its underlying issue first:
 | `guardrail-change` | a deliberate, reviewed change to a guard-defining file | `[CI]` (`meta_guard`) |
 | `allow-suppressions` | a justified new `# noqa` / `# type: ignore` / … | `[CI]` (`meta_guard`) |
 | `no-tests-needed` | a pure refactor/rename with no behavior change | `[CI]` (`meta_guard`) |
-| `sensitive-change-approved` | a reviewed change to a sensitive path (IAM, audit, migrations) | `[Phase gate — v2.0]` |
-| `allow-exemptions` | a justified growth in the exemptions registry | `[Phase gate — v2.0]` |
+| `sensitive-change-approved` | a reviewed change to a sensitive path (migrations, auth, audit chain) | `[CI]` (`meta_guard`) |
+| `allow-exemptions` | a justified threshold move or scanner-exemption growth | `[CI]` (`meta_guard`) |
 | `release-blocker` | an owner hold that denies release | `[Phase gate — v2.0]` |
 
 ## 4. Source of truth

@@ -47,7 +47,8 @@ docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITEC
 - **Backend skeleton:** FastAPI app factory, fail-closed config, JSON logging, `/health` + `/`.
 - **Database layer:** SQLAlchemy 2.0 declarative base + async engine/session (`db/`); Alembic ready.
 - **Gates:** ruff / black / mypy --strict / bandit / pip-audit / pytest, pre-commit (gitleaks +
-  private-key detection), Semgrep dangerous-ops, and the doc-consistency guards.
+  private-key detection, shellcheck), actionlint on the workflows, Semgrep dangerous-ops, and the
+  doc-consistency guards.
 - **Guard fault tests** (`tests/guards/`): negative tests proving every guard can still fail, so a
   guard that silently stops working becomes a test failure rather than a green tick. Run by
   `make check` and the CI `static` job.
