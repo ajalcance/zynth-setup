@@ -59,15 +59,35 @@ jobs:
       - name: Install Copier
         run: pipx install copier
 
+      # --vcs-ref HEAD is LOAD-BEARING. Copier defaults to the latest PEP440 tag when the
+      # source is a git repo, so after v1.0.0 was tagged this step silently generated the
+      # RELEASE instead of the commit under test — the self-test went green while testing
+      # none of the changes in the PR. Content-only edits were invisible; it only surfaced
+      # when a commit added a new file. Never remove this flag.
       - name: Generate project
         run: |
-          copier copy --defaults --trust \
+          copier copy --defaults --trust --vcs-ref HEAD \
             --data project_name="${{ matrix.pname }}" \
             --data github_owner="ci" \
             --data author_name="CI" \
             --data author_email="ci@example.com" \
             ${{ matrix.extra }} \
             . /tmp/gen
+
+      # Fail loudly if generation ever silently falls back to a tag again.
+      - name: Generated project is the commit under test
+        run: |
+          recorded="$(grep '^_commit:' /tmp/gen/.copier-answers.yml | awk '{print $2}')"
+          expected="$(git describe --tags --always HEAD)"
+          echo "generated from: $recorded   expected: $expected"
+          # Exact comparison, not a pattern: at a tagged commit `expected` legitimately IS the
+          # bare tag, so "looks like a tag" would be a false positive. A mismatch means copier
+          # resolved something other than the commit under test.
+          if [ "$recorded" != "$expected" ]; then
+            echo "::error::Self-test generated '$recorded' but HEAD is '$expected'."
+            echo "The gates would pass against a different tree than the one in this PR."
+            exit 1
+          fi
 
       - name: Backend gate
         working-directory: /tmp/gen/backend
