@@ -223,6 +223,20 @@ jobs:
           pip install -q pyyaml pytest
           python3 -m pytest tests/guards -q
 
+      # The Definition of Done, made checkable. Skipped for bot authors: a Dependabot PR body is
+      # machine-generated and its memory impact is genuinely nil, so requiring a declaration there
+      # would train everyone to paste one — and a declaration nobody reads is worse than none.
+      # The author type comes from GitHub, not from the PR content, so it cannot be spoofed.
+      - name: PR memory-impact declaration matches the diff
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Via the environment, never interpolated into the script: a PR body is untrusted input.
+          printf '%s' "$PR_BODY" > /tmp/pr-body.md
+          python3 scripts/pr_declaration.py --body-file /tmp/pr-body.md \
+            --base "origin/${{ github.base_ref }}"
+
       - name: As-built + stale-reference guards
         run: python3 scripts/dod-check.py
 

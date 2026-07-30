@@ -12,6 +12,23 @@
 - [ ] `CHANGELOG.md` updated under `## [Unreleased]`
 - [ ] Conventional Commit message
 
+## Memory impact
+
+<!--
+REQUIRED and machine-checked by scripts/pr_declaration.py against the actual diff.
+Answer each line with exactly `updated` OR `N/A: <concrete reason>`.
+
+The placeholders below deliberately FAIL until you replace them — a pre-ticked box proves
+nothing. A claim of `updated` must be true (the file must appear in the diff), and a record the
+diff *does* touch cannot be declared N/A.
+-->
+
+- PLAN: <updated | N/A: reason>
+- LESSONS: <updated | N/A: reason>
+- current-state: <updated | N/A: reason>
+- ADR: <updated | N/A: reason>
+- CHANGELOG: <updated | N/A: reason>
+
 ## Security
 
 - [ ] No secrets/keys added to git

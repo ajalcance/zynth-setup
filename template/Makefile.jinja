@@ -12,10 +12,10 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+.PHONY: help context preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
+	@echo "Targets: context | preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 backend:
@@ -48,6 +48,11 @@ docs-site:
 	npm audit --omit=dev --audit-level=high && \
 	npm run build
 {% endif %}
+# Session-start snapshot, DERIVED from the repository. Prints only — persisting a summary
+# would create a second copy of the truth that drifts from the first.
+context:
+	python3 scripts/context.py
+
 # Environment diagnostic — what `make check` needs, and how to install anything missing.
 preflight:
 	python3 scripts/preflight.py

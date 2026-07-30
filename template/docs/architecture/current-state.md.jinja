@@ -35,7 +35,7 @@ backend/                    FastAPI backend (Python 3.12)
   frontend/tests/           vitest + Testing Library
 {% endif %}{% if include_docs_site %}docs-site/                  documentation site
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
-{% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · preflight.py · bootstrap-repo.sh
+{% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · preflight.py · context.py · pr_declaration.py · bootstrap-repo.sh
 tests/guards/               negative tests proving each guard in scripts/ CAN fail
 docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITECTURE / PLAN / LESSONS / decisions
 .devcontainer/              sandboxed dev image + default-deny egress firewall
@@ -52,6 +52,10 @@ docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITEC
 - **Guard fault tests** (`tests/guards/`): negative tests proving every guard can still fail, so a
   guard that silently stops working becomes a test failure rather than a green tick. Run by
   `make check` and the CI `static` job.
+- **Memory governance:** `make context` derives a session snapshot from the repository (prints,
+  never persists a second copy of the truth); every PR carries a **Memory impact** declaration that
+  `scripts/pr_declaration.py` checks against the diff in both directions; `dod-check` additionally
+  enforces ADR numbering/indexing and newest-first `LESSONS.md` ordering.
 {% if include_frontend %}- **Frontend chassis:** baseline security headers (CSP, COOP, CORP, HSTS, Permissions-Policy) in
   `next.config.ts`; route + root error boundaries for fault isolation; a typed API client that
   retries only idempotent methods; and a client bundle-size budget enforced in CI.

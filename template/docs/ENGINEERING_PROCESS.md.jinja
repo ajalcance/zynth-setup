@@ -57,7 +57,9 @@ is concentrated on **authority and policy** changes while routine work is checke
 | Release | Build-once candidate, SBOM + provenance, evidence-bound signed manifest, promote-without-rebuild | `[Phase gate — v2.0]` |
 | Release | Production readiness holds (register your own: IAM, approval separation, operational readiness) | `[CI]` mechanism live; the register ships **empty** — see §6 |
 | Memory | Repository precedence + source-of-truth order | `[CI]` (`dod-check`) + `[Review]` (prose accuracy) |
-| Memory | Per-PR memory-impact declaration | `[Phase gate — v2.0]` |
+| Memory | Per-PR memory-impact declaration, cross-checked against the diff | `[CI]` (`pr_declaration`) |
+| Memory | ADR numbering/indexing + newest-first LESSONS ordering | `[CI]` (`dod-check`) |
+| Memory | `make context` — session snapshot derived, never persisted | `[Review]` — a diagnostic, not a gate |
 | Agent | Routine work allowed; policy/release/destructive/privileged/Docker/external mutations gated; `--admin` denied | `[Phase gate — v2.0]` (`.claude/settings.json`{% if include_claude_hooks %}; hooks live today{% endif %}) |
 | Experience | Diff-aware lesson retrieval + enforcement ladder | `[Phase gate — v2.0]` |
 | Standards | Stable full-stack rule IDs with truthful enforcement markers | `[Phase gate — v2.0]` |

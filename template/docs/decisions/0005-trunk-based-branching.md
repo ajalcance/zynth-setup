@@ -1,4 +1,4 @@
-# 5. Trunk-based branching
+# 0005. Trunk-based branching
 
 Date: 2026-07-18
 
@@ -33,7 +33,8 @@ It leaks into every new config file that makes an implicit assumption about wher
 ## Decision
 
 **Trunk-based development.** `main` is the single long-lived branch and is always releasable.
-Short-lived `feat/*`, `fix/*`, `refactor/*`, `docs/*` branches are cut from `main` and
+Short-lived `feat/*`, `fix/*`, `security/*`, `refactor/*`, `docs/*`, `chore/*` branches are cut
+from `main` and
 squash-merged back via PR. Release tags are cut from `main`.
 
 The **first commit of a generated project** is the repository's root commit and is pushed
