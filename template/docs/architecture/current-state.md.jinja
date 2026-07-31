@@ -37,6 +37,7 @@ backend/                    FastAPI backend (Python 3.12)
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
 {% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · preflight.py · context.py · pr_declaration.py · bootstrap-repo.sh
 tests/guards/               negative tests proving each guard in scripts/ CAN fail
+experience/                 registry.toml — lessons normalized onto the enforcement ladder
 docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITECTURE / PLAN / LESSONS / decisions
 .devcontainer/              sandboxed dev image + default-deny egress firewall
 {% if include_claude_hooks %}.claude/hooks/              local Claude Code hooks: auto-format + footgun/secret blockers (ergonomics)
@@ -52,6 +53,10 @@ docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITEC
 - **Guard fault tests** (`tests/guards/`): negative tests proving every guard can still fail, so a
   guard that silently stops working becomes a test failure rather than a green tick. Run by
   `make check` and the CI `static` job.
+- **Experience-to-control loop** (`experience/`): recurring lessons normalized onto a five-rung
+  ladder (reference → context → checklist → guard → production blocker). `make risk-context`
+  matches the current diff to the entries that apply; CI **fails** if an entry claims `guard`
+  enforcement without naming a mechanism that exists. See ADR-0008.
 - **Memory governance:** `make context` derives a session snapshot from the repository (prints,
   never persists a second copy of the truth); every PR carries a **Memory impact** declaration that
   `scripts/pr_declaration.py` checks against the diff in both directions; `dod-check` additionally
@@ -83,4 +88,4 @@ this is only the starter skeleton — build features one reviewed slice per PR a
 
 ## ADRs governing the as-built system
 
-0001 (record ADRs) · 0002 (defense-in-depth against malicious code) · 0003 (monorepo layout & backend skeleton) · 0004 (agent-resistant guardrails) · 0005 (trunk-based branching) · 0006 (engineering process & control system) · 0007 (agent permission model).
+0001 (record ADRs) · 0002 (defense-in-depth against malicious code) · 0003 (monorepo layout & backend skeleton) · 0004 (agent-resistant guardrails) · 0005 (trunk-based branching) · 0006 (engineering process & control system) · 0007 (agent permission model) · 0008 (experience-to-control loop).

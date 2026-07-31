@@ -12,10 +12,10 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help context preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+.PHONY: help context risk-context preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: context | preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
+	@echo "Targets: context | risk-context | preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 backend:
@@ -52,6 +52,11 @@ docs-site:
 # would create a second copy of the truth that drifts from the first.
 context:
 	python3 scripts/context.py
+
+# Which recorded lessons apply to what you are changing right now. Advisory, always exits 0 —
+# retrieval never overrides code, tests, ADRs or live settings. See experience/README.md.
+risk-context:
+	python3 scripts/risk_context.py
 
 # Environment diagnostic — what `make check` needs, and how to install anything missing.
 preflight:

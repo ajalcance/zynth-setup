@@ -16,3 +16,4 @@ silently.
 - [0005 — Trunk-based branching](0005-trunk-based-branching.md)
 - [0006 — Engineering process and control system](0006-engineering-process-and-control-system.md)
 - [0007 — Low-friction agent permission model](0007-agent-permission-model.md)
+- [0008 — Experience-to-control loop](0008-experience-to-control-loop.md)

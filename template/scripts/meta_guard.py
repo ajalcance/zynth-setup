@@ -73,6 +73,9 @@ GUARD_FILE_RE = re.compile(
     r"|^\.semgrep/.*\.ya?ml$"
     r"|^\.gitleaks\.toml$"
     r"|^\.pre-commit-config\.yaml$"
+    # Promoting a lesson up the enforcement ladder IS a policy change: an agent may recommend
+    # one, but turning its own advice into policy is the owner's call.
+    r"|^experience/registry\.toml$"
 )
 
 

@@ -61,7 +61,9 @@ is concentrated on **authority and policy** changes while routine work is checke
 | Memory | ADR numbering/indexing + newest-first LESSONS ordering | `[CI]` (`dod-check`) |
 | Memory | `make context` — session snapshot derived, never persisted | `[Review]` — a diagnostic, not a gate |
 | Agent | Routine work allowed; policy/release/destructive/privileged/Docker/external mutations **ask**; secret reads denied; `--admin` blocked by hook | `[Review]` — a strong default in `.claude/settings.json`, but project settings can be overridden by higher-precedence scopes; the fail-closed enforcement is the ruleset + `ci-complete` |
-| Experience | Diff-aware lesson retrieval + enforcement ladder | `[Phase gate — v2.0]` |
+| Experience | Diff-aware lesson retrieval (`make risk-context`) | `[Review]` — advisory; never overrides code or tests |
+| Experience | Registry honesty — a `guard` rung must name a mechanism that exists | `[CI]` (`risk_context --validate`) |
+| Experience | Promotion up the ladder needs the owner (`guardrail-change`) | `[CI]` (`meta_guard`) |
 | Standards | Stable full-stack rule IDs with truthful enforcement markers | `[Phase gate — v2.0]` |
 
 ## 3. Branch and PR process
