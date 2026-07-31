@@ -126,10 +126,11 @@ solo_maintainer:
 include_claude_hooks:
   type: bool
   help: >-
-    Include Claude Code session HOOKS (.claude/settings.json + .claude/hooks/)? Local
-    ergonomics that shift the CI guards left — auto-format on write, block footguns /
-    secret writes. This gates ONLY the hooks: CLAUDE.md, AGENTS.md and the /dod command
-    are the universal AI working contract and always ship. CI is the fail-closed backstop.
+    Include the Claude Code agent policy (.claude/settings.json + .claude/hooks/)? Sets a
+    permission model (routine work runs unprompted; policy/release/destructive actions ask;
+    secret reads denied) plus hooks that auto-format and block footguns. Gates ONLY those
+    files: CLAUDE.md, AGENTS.md and the /dod command are the universal AI working contract
+    and always ship. CI and the branch ruleset remain the fail-closed backstop.
   default: true
 
 # --- Post-generation setup (runs only with `copier copy --trust`) -------------

@@ -24,6 +24,12 @@ node_modules/
 .next/
 dist/
 
+# --- Agent settings ---
+# Machine-local Claude Code overrides. Deliberately ignored: the shared policy lives in
+# .claude/settings.json, and a local file must never become necessary to the team workflow
+# (or a quiet way to weaken the shared one).
+.claude/settings.local.json
+
 # --- OS / editor ---
 .DS_Store
 *.swp

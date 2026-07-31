@@ -40,6 +40,14 @@ RULES: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"\bgit\s+config\b.*\bcore\.hooksPath\b"),
         "changing core.hooksPath disables the repo's pre-commit hooks.",
     ),
+    (
+        # Enforced HERE rather than as a permission deny rule: `--admin` can appear at any
+        # position, and permission rules are globs, not regexes. A PreToolUse hook that exits 2
+        # is also evaluated BEFORE permission rules, so this cannot be undone by an allow rule.
+        re.compile(r"(^|\s)--admin(\s|$)"),
+        "--admin overrides branch protection and merges past the required checks. "
+        "That is the owner's decision, never the agent's — ask instead.",
+    ),
 ]
 
 
