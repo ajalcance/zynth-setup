@@ -64,7 +64,8 @@ is concentrated on **authority and policy** changes while routine work is checke
 | Experience | Diff-aware lesson retrieval (`make risk-context`) | `[Review]` — advisory; never overrides code or tests |
 | Experience | Registry honesty — a `guard` rung must name a mechanism that exists | `[CI]` (`risk_context --validate`) |
 | Experience | Promotion up the ladder needs the owner (`guardrail-change`) | `[CI]` (`meta_guard`) |
-| Standards | Stable full-stack rule IDs with truthful enforcement markers | `[Phase gate — v2.0]` |
+| Standards | Stable full-stack rule IDs (`BE`/`API`/`FE`/`TA`/`SEC`/`OBS`/`REL`) in [`standards/`](standards/README.md) | `[Review]` — each rule additionally carries its own marker |
+| Standards | Marker honesty — a `[CI]` rule must name a mechanism that exists, and every cited rule id must resolve | `[CI]` (`standards_check`) |
 
 ## 3. Branch and PR process
 

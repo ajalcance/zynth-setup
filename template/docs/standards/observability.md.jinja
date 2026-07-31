@@ -1,0 +1,34 @@
+# OBS — Observability standards
+
+What the system leaves behind, and whether it is enough to answer "what happened, and who did
+it" after the fact. Markers are explained in [`README.md`](README.md); the **Mechanism** column
+names what enforces a rule, and is empty when nothing does.
+
+## Logging
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| OBS-001 | Application logs are structured JSON through the shared logger, not `print`. A log nobody can query is a log nobody reads. | `[Review]` | — |
+| OBS-002 | A log line never contains a secret, a credential, a full token, or personal data. Log an identifier, not the subject. | `[Review]` | — |
+| OBS-003 | A caught exception is logged with the context needed to reconstruct it — what was attempted, on what, and why it failed. | `[Review]` | — |
+| OBS-004 | Log levels mean something: `error` is actionable, `warning` is suspicious, `info` is a lifecycle event. A log that is always noisy is always ignored. | `[Review]` | — |
+
+## Health and diagnostics
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| OBS-010 | A health endpoint answers cheaply and without authentication, and leaks no internal topology. | `[Review]` | — |
+| OBS-011 | A readiness signal reflects the dependencies the service actually needs, so a deploy does not shift traffic to an instance that cannot serve. | `[Review]` | — |
+| OBS-012 | A diagnostic prints what it found and how much it inspected. A check reporting success over zero inputs is indistinguishable from one that passed. | `[Review]` | — |
+{%- if include_compliance_spine %}
+
+## The durable record
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| OBS-020 | Every consequential action carries an explicit emit, detection, audit and compliance decision — including the deliberate decision that it needs none. | `[CI]` | `backend/{{ python_package }}/telemetry/registry.py` |
+| OBS-021 | Telemetry fails open. Losing an event must never fail the user's request; losing the request to record the event is the worse outcome. | `[Review]` | — |
+| OBS-022 | The audit chain is append-only and hash-linked. A record that can be edited afterwards is not evidence. | `[Review]` | — |
+| OBS-023 | A change to the audit chain is approved by the owner before merge — it is the record you would rely on after an incident. | `[CI]` | `scripts/meta_guard.py` |
+| OBS-024 | An action that cannot be reconstructed afterwards has no answer when someone asks what happened. Decide the record before shipping the action, not after the incident. | `[Review]` | — |
+{%- endif %}

@@ -1,0 +1,65 @@
+# {{ project_name }} — Engineering standards
+
+The full rule set, stated once, with a **stable ID per rule** so a review comment, an ADR, a
+commit message or an agent instruction can cite `BE-004` instead of paraphrasing.
+
+The short version — the rules worth knowing before you write anything — is
+[`../CODING_STANDARDS.md`](../CODING_STANDARDS.md). This directory is the reference behind it.
+
+## Rule IDs
+
+| Prefix | Domain | File |
+|---|---|---|
+| `BE` | Backend (Python) structure, typing, formatting | [`backend.md`](backend.md) |
+| `API` | HTTP surface: routing, contracts, errors, auth | [`api.md`](api.md) |
+| `FE` | TypeScript / Next.js frontend and docs site | {% if include_frontend or include_docs_site %}[`frontend.md`](frontend.md){% else %}not enabled — add the frontend or docs-site module{% endif %} |
+| `TA` | Tests and assurance — including how guards are tested | [`testing.md`](testing.md) |
+| `SEC` | Secrets, dangerous operations, supply chain, anti-weakening | [`security.md`](security.md) |
+| `OBS` | Logging, health, and the record an incident is reconstructed from | [`observability.md`](observability.md) |
+| `REL` | Branching, review, docs-as-code, release and deployment | [`delivery.md`](delivery.md) |
+
+IDs are **append-only**. Retiring a rule means marking it withdrawn in place, never renumbering
+around it — the whole value of a stable ID is that a citation written a year ago still resolves.
+
+## Enforcement markers
+
+Every rule declares how it is *actually* enforced, using the vocabulary from
+[`../ENGINEERING_PROCESS.md`](../ENGINEERING_PROCESS.md):
+
+| Marker | Meaning |
+|---|---|
+| `[CI]` | mechanically enforced by a gate that runs today; the Mechanism column names it |
+| `[Review]` | depends on human (or agent) judgement; nothing will catch a violation for you |
+| `[Phase gate — vX.Y]` | planned for a named release; **not yet enforced** |
+| `[Production blocker]` | registered in `scripts/prod_readiness.py`; a strict release is denied until it closes |
+
+Most rules are `[Review]`, and that is the honest answer rather than a gap to paper over. A green
+CI run proves the `[CI]` rules held. It proves nothing about the rest — which is exactly what the
+markers are for.
+
+## Honesty is enforced, not assumed
+
+`python3 scripts/standards_check.py` runs in CI (and in `make dod-check`) and **fails** when:
+
+- a rule ID is malformed, duplicated, or uses an undeclared prefix;
+- an enforcement marker is outside the vocabulary, or a phase gate names no release;
+- a `[CI]` rule names no mechanism, or names a file that does not exist;
+- a `[Production blocker]` rule cites a `PROD-BLOCKER(<id>)` that is not in the register;
+- any document cites a rule ID that this suite does not define.
+
+Without that check the suite could quietly assert automation it does not have — the same failure
+the control map's markers exist to prevent, and the same reason
+`scripts/risk_context.py --validate` guards the experience registry.
+
+## Adding a rule
+
+1. Append it to the right file with the next free number in that prefix.
+2. State it so a violation is recognisable — "handlers are thin" is a rule; "write good code" is not.
+3. Pick the marker that is **true today**. Wanting a gate is not having one; use `[Review]`, or
+   `[Phase gate — vX.Y]` if it is genuinely scheduled.
+4. If you mark it `[CI]`, name the file or directory that enforces it, in backticks.
+5. Run `make dod-check`.
+
+Promoting a rule from `[Review]` to `[CI]` means building the gate, and a new gate needs a
+negative test in [`../../tests/guards/`](../../tests/guards/) proving it can fail — see
+[`../../experience/README.md`](../../experience/README.md) for the promotion rules.

@@ -1,0 +1,42 @@
+# FE — TypeScript and Next.js standards
+
+Applies to {{ 'frontend/ and docs-site/' if (include_frontend and include_docs_site) else ('frontend/' if include_frontend else 'docs-site/') }}. Markers are explained in [`README.md`](README.md);
+the **Mechanism** column names what enforces a rule, and is empty when nothing does.
+
+## Types and tooling
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+{%- if include_frontend %}
+| FE-001 | `strict: true` stays on and the type check passes. New `any` is not accepted — use a real type, or `unknown` with a narrowing check. | `[CI]` | `frontend/tsconfig.json` |
+| FE-002 | ESLint passes, including the accessibility rules in the `core-web-vitals` set. | `[CI]` | `frontend/eslint.config.mjs` |
+| FE-003 | Formatting is `prettier`. It is run, not discussed. | `[CI]` | `frontend/.prettierrc.json` |
+{%- endif %}
+{%- if include_docs_site %}
+| FE-004 | The docs site holds the same lint, format and build bar as the app; it is not a second-class module. | `[CI]` | `docs-site/eslint.config.mjs` |
+{%- endif %}
+| FE-005 | Never interpolate a generated value (project name, slug) into a formatter-checked line — a long or quoted value breaks the line limit or the syntax on a fresh generation. Put it in a small JSON module and import it. | `[Review]` | — |
+
+## Components and data
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| FE-010 | Server Components by default. `"use client"` is added only where interactivity requires it, and as low in the tree as possible. | `[Review]` | — |
+| FE-011 | A component is colocated with what only it uses. Shared means used by more than one caller, not "might be one day". | `[Review]` | — |
+{%- if include_frontend %}
+| FE-012 | HTTP goes through the typed client in `frontend/lib/`, never a bare `fetch` at a call site — that is how a codebase ends up with a dozen error behaviours and no timeouts. | `[Review]` | — |
+| FE-013 | Retries apply to idempotent methods only. If a mutation must be retried, make it idempotent first — a duplicate write is worse than a failure. | `[CI]` | `frontend/tests/api-client.test.ts` |
+| FE-014 | Every route that can fail independently has an `error.tsx`. One throwing component must not blank the page. | `[Review]` | — |
+{%- endif %}
+
+## Delivery and runtime
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| FE-020 | The production build runs in CI, not only at image-build or deploy time. A build break found post-merge is found by the next person. | `[CI]` | `.github/workflows/ci.yml` |
+| FE-021 | Production dependencies carry no high-severity advisory. Dev-tooling advisories are handled by Dependabot, not by widening the gate. | `[CI]` | `.github/workflows/ci.yml` |
+{%- if include_frontend %}
+| FE-022 | The client bundle stays within its budget. Raising the budget is a deliberate, explained change, not a reflex when it goes red. | `[CI]` | `frontend/scripts/check-bundle-size.mjs` |
+| FE-023 | Security headers are verified against the running app, not assumed from the config file. | `[Review]` | — |
+| FE-024 | `script-src` still allows `'unsafe-inline'` because Next's bootstrap requires it without a nonce. Add nonce middleware before this app handles sensitive data. | `[Review]` | — |
+{%- endif %}

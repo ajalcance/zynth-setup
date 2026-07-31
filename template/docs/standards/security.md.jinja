@@ -1,0 +1,55 @@
+# SEC — Security standards
+
+The rules that do not bend, and the ones stopping a well-meaning change from quietly removing a
+control. Markers are explained in [`README.md`](README.md); the **Mechanism** column names what
+enforces a rule, and is empty when nothing does.
+
+## Secrets
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| SEC-001 | Secrets never enter git — no real env file, key, certificate, token or password, in code or in history. | `[CI]` | `.pre-commit-config.yaml` and `.gitleaks.toml` |
+| SEC-002 | Only the example env file is committed, holding placeholders. Code references an environment variable; it never inlines a default credential. | `[Review]` | — |
+| SEC-003 | A secret that reached the repository is **rotated**, not deleted. Removing the commit does not un-publish it. | `[Review]` | — |
+{%- if include_claude_hooks %}
+| SEC-004 | Reading real secret material is denied to the coding agent; the placeholder example file stays readable. Project settings are a strong default, not an unbypassable control. | `[Review]` | — |
+{%- endif %}
+
+## Dangerous operations
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| SEC-010 | No `eval`, `exec`, dynamic import by name, or unsafe deserialization of untrusted input. | `[CI]` | `.semgrep/dangerous-ops.yml` |
+| SEC-011 | No shell invocation of a command built from a string. Pass an argument list. | `[CI]` | `.semgrep/dangerous-ops.yml` |
+| SEC-012 | No destructive filesystem operation on a path assembled at runtime. | `[CI]` | `.semgrep/dangerous-ops.yml` |
+| SEC-013 | No outbound request to a hardcoded IP address. | `[CI]` | `.semgrep/dangerous-ops.yml` |
+| SEC-014 | Static security analysis passes — `bandit` at medium severity and above, plus the `S` rules in ruff. | `[CI]` | `.github/workflows/ci.yml` and `backend/pyproject.toml` |
+| SEC-015 | Untrusted input reaching a shell, a query, a path, or a template is a finding regardless of how unlikely the caller looks. | `[Review]` | — |
+
+## Boundaries and fail-closed behaviour
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| SEC-020 | Fail closed. A missing key, unreachable dependency, or ambiguous authentication denies; it never degrades to an insecure path. | `[Review]` | — |
+| SEC-021 | Never weaken a security control to make something work. If validation blocks you, fix the integration. | `[Review]` | — |
+| SEC-022 | CORS, CSP and allowlists name origins explicitly. A wildcard is a decision that needs a written reason. | `[Review]` | — |
+| SEC-023 | A security-relevant change is noted in the security doc and carries a `security:` commit type. | `[Review]` | — |
+
+## Supply chain
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| SEC-030 | Production dependencies carry no known high-severity advisory at merge time. Advisory databases move without us, so Dependabot keeps them current between merges. | `[CI]` | `.github/workflows/ci.yml` and `.github/dependabot.yml` |
+| SEC-031 | Every GitHub Action is pinned to a full commit SHA with a version comment; drift is caught by the Scorecard pinned-dependencies check. | `[CI]` | `scripts/scorecard_gate.py` |
+| SEC-032 | A third-party binary downloaded in CI is pinned by version **and** verified by checksum before it runs. | `[Review]` | — |
+| SEC-033 | A new runtime dependency is a decision: state what it does that existing code cannot, and who maintains it. | `[Review]` | — |
+
+## Anti-weakening
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| SEC-040 | A change to a guard-defining file needs owner approval and lands as its own change — never bundled into the work the guard just blocked. | `[CI]` | `scripts/meta_guard.py` |
+| SEC-041 | If your own reasoning concludes you should edit the thing that is checking you, stop and ask. A plausible argument that "this guard has a bug" is exactly the shape this failure mode takes. | `[Review]` | — |
+| SEC-042 | Thresholds and scanner exemption lists move in the tightening direction freely; loosening one needs an owner-approved label and a stated reason. | `[CI]` | `scripts/meta_guard.py` |
+| SEC-043 | A change to a sensitive path — migrations, the auth layer, the audit chain — needs owner approval; its blast radius outlives the PR. | `[CI]` | `scripts/meta_guard.py` |
+| SEC-044 | An override label is exceptional evidence, not a routine way to make CI green. A blocked change fixes its cause first. | `[Review]` | — |

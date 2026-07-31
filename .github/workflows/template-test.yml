@@ -109,7 +109,10 @@ jobs:
 
       - name: Doc-consistency guards
         working-directory: /tmp/gen
-        run: python scripts/dod-check.py
+        run: |
+          python scripts/dod-check.py
+          python scripts/prod_readiness.py
+          python scripts/standards_check.py
 
       # `make check` passing is NOT sufficient to commit: the generated repo's own `hygiene`
       # job (and the pre-commit hook `--trust` installs) run these, so a generated file that

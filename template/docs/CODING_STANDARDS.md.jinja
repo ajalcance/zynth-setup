@@ -1,62 +1,80 @@
 # Coding Standards
 
-Enforced by CI (`make check`) and code review. The summary lives in [`../CLAUDE.md`](../CLAUDE.md) §3.
+The rules worth knowing before you write anything. The **full suite**, with a stable ID and an
+honest enforcement marker per rule, is [`standards/README.md`](standards/README.md) — cite
+`BE-004` in a review comment rather than paraphrasing it.
+
+Enforced by CI (`make check`) and code review; the summary lives in [`../CLAUDE.md`](../CLAUDE.md) §3.
+
+> A green pipeline means every `[CI]` rule held. It says nothing about the `[Review]` ones, which
+> are the majority. That distinction is the whole point of the markers.
 
 ## Structure
 
-- **File length:** target ≤ 300 lines, hard cap **400**. Over → split by concern.
-- **Function length:** ≤ 50 lines. Cyclomatic complexity ≤ 10 (ruff `C90`).
+- **File length:** target ≤ 300 lines, hard cap **400**. Over → split by concern. (BE-001)
+- **Function length:** ≤ 50 lines. Cyclomatic complexity ≤ 10, enforced by ruff `C90`. (BE-002, BE-003)
 - **One router per resource.** Route handlers are thin; business logic lives in `services/`, data
-  access in the DB layer. No fat controllers.
-- **No dead code, no `.bak` files, no commented-out blocks** committed.
+  access in the DB layer. No fat controllers. (BE-005, API-001)
+- **No dead code, no `.bak` files, no commented-out blocks** committed. (BE-006)
 
 ## Python
 
-- **Type everything.** `mypy --strict` passes. No untyped public functions.
-- **Formatting:** `black` (line length 100). **Linting:** `ruff` (E, F, I, B, UP, N, S, C90).
+- **Type everything.** `mypy --strict` passes. No untyped public functions. (BE-004)
+- **Formatting:** `black` (line length 100). **Linting:** `ruff` (E, F, I, B, UP, N, S, C90). (BE-010, BE-011)
 - **Security:** `bandit` clean; `pip-audit` clean. Never `eval`/`exec`, `shell=True`, or unsafe
-  deserialization (Semgrep `dangerous-ops` blocks these).
+  deserialization — Semgrep `dangerous-ops` blocks these. (SEC-010, SEC-011, SEC-014)
 - **Async-first** for I/O. Prefer the ORM over raw SQL; scope every `DELETE`/`UPDATE` with `WHERE`.
+  (BE-012, BE-013, BE-014)
 {% if include_frontend or include_docs_site %}
 ## TypeScript
 
 Applies to {{ 'frontend/ and docs-site/' if (include_frontend and include_docs_site) else ('frontend/' if include_frontend else 'docs-site/') }}.
+{%- if include_frontend %}
 
 - **Type everything.** `tsconfig.json` has `strict: true` — no new `any`; prefer a real type or
-  `unknown` with a narrowing check. `tsc --noEmit` must pass.
+  `unknown` with a narrowing check. `tsc --noEmit` must pass. (FE-001)
 - **Formatting:** `prettier --check .`. **Linting:** `eslint` (`eslint-config-next`, incl. the
-  `core-web-vitals` subset of `jsx-a11y`).
+  `core-web-vitals` subset of `jsx-a11y`). (FE-002, FE-003)
+{%- else %}
+
+- **Formatting:** `prettier --check .`. **Linting:** `eslint`, and the build must pass. (FE-004)
+{%- endif %}
 - **Components:** Server Components by default; add `"use client"` only where interactivity
-  requires it. Keep components small and colocate a component with what only it uses.
+  requires it. Keep components small and colocate a component with what only it uses. (FE-010, FE-011)
 {%- if include_frontend %}
 - **HTTP goes through `lib/api-client.ts`**, never a bare `fetch` at a call site — that is how a
   codebase ends up with a dozen error behaviours and no timeouts. It retries **idempotent methods
-  only**; if a mutation must be retried, make it idempotent first.
+  only**; if a mutation must be retried, make it idempotent first. (FE-012, FE-013)
 - **Every route that can fail independently gets an `error.tsx`.** One throwing component must
-  not blank the page.
+  not blank the page. (FE-014)
 - **Security headers live in `next.config.ts`.** Known gap: `script-src` still allows
   `'unsafe-inline'` because Next's bootstrap requires it without a nonce — add nonce middleware
   before this app handles sensitive data. COEP is intentionally off (it breaks cross-origin
-  assets and is only needed for cross-origin isolation).
+  assets and is only needed for cross-origin isolation). (FE-023, FE-024)
 - **Watch the bundle budget** (`npm run bundle-size`). Raise `BUNDLE_MAX_KB` deliberately, with a
-  reason — not reflexively when it goes red.
+  reason — not reflexively when it goes red. (FE-022)
 {%- endif %}
 - **Never interpolate a copier value (project name, slug) into a formatter-checked line.** A long
   or quoted value can push the line past the prettier/ruff limit or break the syntax on a fresh
   generation. Put anything that must vary in a small JSON module and import it instead — see
-  `app/site.json`{% if include_frontend and include_docs_site %} in `frontend/` and `docs-site/`{% elif include_frontend %} in `frontend/`{% else %} in `docs-site/`{% endif %}.
+  `app/site.json`{% if include_frontend and include_docs_site %} in `frontend/` and `docs-site/`{% elif include_frontend %} in `frontend/`{% else %} in `docs-site/`{% endif %}. (FE-005)
 {% endif %}
 ## Tests
 
-- Every new behaviour has a test; security-relevant code **requires** tests.
-- **Backend:** fast, isolated, deterministic (in-memory SQLite for the DB layer).
+- Every new behaviour has a test; security-relevant code **requires** tests. (TA-001, TA-002)
+- **Backend:** fast, isolated, deterministic (in-memory SQLite for the DB layer). (TA-014)
+- A passing SQLite test is **not** evidence of PostgreSQL behaviour — RLS, locking, constraint
+  timing and extensions all differ. Say which engine produced the evidence. (TA-015)
+- Every guard gets a negative test proving it can still fail, and assert **both** directions —
+  a suite that only proves failure passes a check that fails unconditionally. (TA-010, TA-020)
 {%- if include_frontend %}
 - **Frontend:** `vitest` + `@testing-library/react`, colocated under `frontend/tests/`. Assert
   structure/behaviour (roles, text presence), not exact copy — see `frontend/tests/page.test.tsx`
-  for the pattern.
+  for the pattern. (TA-016)
 {%- endif %}
 
 ## Commits & PRs
 
-- **Conventional Commits.** One logical change per commit.
+- **Conventional Commits.** One logical change per commit. (REL-003)
 - PRs run the full gate + doc-consistency guards; the PR template lists the Definition of Done.
+  (REL-001, REL-010, REL-014)

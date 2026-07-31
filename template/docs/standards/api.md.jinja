@@ -1,0 +1,37 @@
+# API — HTTP surface standards
+
+The contract other systems depend on. Once a client exists, a shape you shipped by accident is a
+shape you have to keep. Markers are explained in [`README.md`](README.md); the **Mechanism**
+column names what enforces a rule, and is empty when nothing does.
+
+## Shape and routing
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| API-001 | One router per resource. A router handling two unrelated resources is two routers sharing a file. | `[Review]` | — |
+| API-002 | Routes live under a versioned prefix. A breaking change gets a new version, not a quiet edit to the old one. | `[Review]` | — |
+| API-003 | Request and response bodies are declared models, never bare dicts. An undeclared shape is an undocumented contract. | `[Review]` | — |
+| API-004 | A handler validates input at the boundary and passes typed values inward. Nothing past the router re-parses raw input. | `[Review]` | — |
+| API-005 | List endpoints are bounded — a page size with a documented maximum, never an unbounded scan. | `[Review]` | — |
+| API-006 | `GET` and `HEAD` have no side effects, so a retry or a prefetch cannot change state. | `[Review]` | — |
+
+## Errors and failure
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| API-010 | Errors use one response shape across the surface, so a client writes error handling once. | `[Review]` | — |
+| API-011 | An error returned to a client carries no stack trace, SQL, internal hostname, or identifier it did not already know. | `[Review]` | — |
+| API-012 | An unexpected exception returns 500 and is logged with enough context to reconstruct it. It never returns a partial success. | `[Review]` | — |
+| API-013 | A timeout or unreachable dependency fails the request closed. Degrading to an unauthenticated or unvalidated path is never the fallback. | `[Review]` | — |
+
+## Authentication and authorization
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| API-020 | Every state-changing endpoint requires an authenticated principal. Ambiguous credentials deny rather than default. | `[Review]` | — |
+| API-021 | Authorization is decided per request from the principal, never inferred from a client-supplied id in the request body. | `[Review]` | — |
+{%- if include_compliance_spine %}
+| API-022 | The resolved principal is recorded as the actor on every event the request emits. | `[Review]` | — |
+{%- endif %}
+| API-023 | Health and readiness endpoints stay unauthenticated, cheap, and free of internal detail. | `[Review]` | — |
+| API-024 | An auth-layer change is approved by the owner before merge — it alters who can reach what. | `[CI]` | `scripts/meta_guard.py` |

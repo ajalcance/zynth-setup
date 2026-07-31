@@ -83,6 +83,12 @@ Don't copy a repository fact into a note — a second copy is a competing truth 
 - **No dead code, no `.bak` files, no commented-out blocks** committed.
 - **Tests** for every new behaviour; security-relevant code requires tests.
 
+Every rule has a stable id in [`docs/standards/`](docs/standards/README.md) — cite `BE-004`, don't
+paraphrase it. Each rule also states **how it is actually enforced**: `[CI]` means a gate catches a
+violation today; `[Review]` means nothing will, and most rules are `[Review]`. Never mark a rule
+`[CI]` without naming a mechanism that exists — `scripts/standards_check.py` fails the build if you
+do, for the same reason the control map's markers exist.
+
 ---
 
 ## 4. How to run / test

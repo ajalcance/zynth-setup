@@ -250,6 +250,12 @@ jobs:
       - name: Production-readiness register matches the code
         run: python3 scripts/prod_readiness.py
 
+      # Blocking: a standards rule marked [CI] must name a mechanism that exists, and every
+      # rule id cited in the docs must resolve. Without this the suite could describe a control
+      # system nobody built, and a green pipeline would be read as proof of rules it never ran.
+      - name: Standards suite is honest about its enforcement
+        run: python3 scripts/standards_check.py
+
       # Every requirement must be exactly pinned ('==' or a hash) — no floating spec an agent or
       # a resolver could bump silently. JS is deterministic via `npm ci` + package-lock integrity.
       - name: Requirements are fully pinned

@@ -1,0 +1,42 @@
+# REL — Delivery standards
+
+How a change gets from a branch to production, and what has to be true at each step. Markers are
+explained in [`README.md`](README.md); the **Mechanism** column names what enforces a rule, and
+is empty when nothing does.
+
+## Source control
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| REL-001 | `main` is protected, linear and always releasable. Changes reach it only through a pull request. | `[CI]` | `.github/rulesets/main.json` |
+| REL-002 | Branches are short-lived, hold one logical change, and use an accepted prefix. | `[Review]` | — |
+| REL-003 | Commits follow Conventional Commits, one logical change each. | `[Review]` | — |
+| REL-004 | One aggregate check is the required gate, and every job fans into it. A job outside it cannot block a merge. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
+| REL-005 | Semantic correctness of a change is a review judgement. A green pipeline means no gate objected, not that the change is right. | `[Review]` | — |
+
+## Documentation as a gate
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| REL-010 | A shipped module, route or dependency appears on the as-built page in the same change that adds it. | `[CI]` | `scripts/dod-check.py` |
+| REL-011 | A file path written in the docs must exist. A reference to a renamed file makes every later reader wrong. | `[CI]` | `scripts/dod-check.py` |
+| REL-012 | Decision records are numbered contiguously, never reused, and indexed. An unfindable ADR gets silently re-litigated. | `[CI]` | `scripts/dod-check.py` |
+| REL-013 | The lessons log stays newest-first, so the log keeps the one property that makes it a log. | `[CI]` | `scripts/dod-check.py` |
+| REL-014 | Every pull request declares its memory impact, and the declaration is checked against the diff in both directions. | `[CI]` | `scripts/pr_declaration.py` |
+| REL-015 | A new design decision is written as an ADR before it is implemented silently. Implementing an already-decided plan needs no new ADR. | `[Review]` | — |
+| REL-016 | A user-visible change is recorded in the changelog under the unreleased heading. | `[Review]` | — |
+| REL-017 | The repository is the durable memory. When a session note and the repository disagree, the repository wins. | `[Review]` | — |
+
+## Release
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| REL-020 | Production stand-ins are registered, and each register entry still has a marker in the tree. The register and the code are checked against each other in both directions. | `[CI]` | `scripts/prod_readiness.py` |
+| REL-021 | A release is denied while any registered production blocker is open. The strict mode exists; no release path calls it yet. | `[Phase gate — v2.0]` | — |
+{%- if include_deploy %}
+| REL-022 | A release tag must be an ancestor of the default branch. Nothing is signed from an unmerged tree. | `[CI]` | `.github/workflows/release.yml` |
+| REL-023 | Images are signed and referenced by digest, and the signature is verified on the host before anything runs. | `[CI]` | `deploy/verify.sh` |
+| REL-024 | Deployment promotes the exact reviewed artifact. Rebuilding at deploy time ships bytes nobody reviewed, even from the same source. | `[Review]` | — |
+| REL-025 | A build-once candidate carries an SBOM, provenance, and an evidence-bound signed manifest, and promotion never rebuilds. | `[Phase gate — v2.0]` | — |
+| REL-026 | An owner-applied release-blocker label denies a release outright. | `[Phase gate — v2.0]` | — |
+{%- endif %}

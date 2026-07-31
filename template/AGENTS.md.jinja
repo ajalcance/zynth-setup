@@ -11,7 +11,9 @@ Key points (full detail in `CLAUDE.md`):
 - **Secrets & keys never enter git.** Fail closed. Never weaken security to make something work.
 - **After every change:** `make check` green, then update `docs/PLAN.md`, `docs/LESSONS.md`,
   `docs/architecture/current-state.md`, add an ADR for new decisions, and `CHANGELOG.md`.
-- **Standards:** files ≤ 400 lines, thin routers, type everything, tests for every behaviour.
+- **Standards:** files ≤ 400 lines, thin routers, type everything, tests for every behaviour. The
+  full suite with citable ids is [`docs/standards/`](docs/standards/README.md); each rule states
+  whether a gate actually enforces it (`[CI]`) or nobody will catch a violation (`[Review]`).
 - **Conventional Commits**, PRs only, `make dod-check` must pass.
 
 ## Do NOT disable the guardrails
@@ -32,6 +34,7 @@ Attempts to weaken a guard are themselves gated and reviewed. What each one prot
 | **check_pins** (`scripts/check_pins.py`) | an unpinned / floating dependency | pin the exact version |
 | **meta_guard** (`scripts/meta_guard.py`) | silently weakening a guard: new suppressions, code without a test, editing a guard-defining file, changing a sensitive path (migrations/auth/audit), or lowering a threshold | address the real cause it flagged — a label is the owner's call, not yours |
 | **actionlint / shellcheck** | broken workflow expressions, unsafe shell | fix the workflow or script; don't add a `# shellcheck disable` |
+| **standards_check** (`scripts/standards_check.py`) | a standards rule claiming a `[CI]` gate that doesn't exist, or a citation to a rule that was deleted | name a real mechanism, or lower the marker to `[Review]` and be honest |
 {% if include_deploy %}| **cosign verify** | deploying an unsigned / tampered image | build and sign through the release pipeline |
 {% endif %}{% if include_compliance_spine %}| **spine coverage guards** | an action that isn't recorded / monitored / audited | register the action for emit + detection + audit + compliance |
 {% endif %}

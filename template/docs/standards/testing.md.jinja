@@ -1,0 +1,39 @@
+# TA — Tests and assurance
+
+How this project decides that something works — including how it decides that the *checks*
+still work. Markers are explained in [`README.md`](README.md); the **Mechanism** column names
+what enforces a rule, and is empty when nothing does.
+
+## Coverage of behaviour
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| TA-001 | Every new behaviour ships with a test. Backend source changing with no test change fails the gate. | `[CI]` | `scripts/meta_guard.py` |
+| TA-002 | Security-relevant code requires tests. "Hard to test" is a design finding, not an exemption. | `[Review]` | — |
+| TA-003 | The coverage floor is an anti-regression ratchet, not a quality target. Tighten it freely; lowering it needs an owner-approved exemption. | `[CI]` | `scripts/meta_guard.py` |
+| TA-004 | A bug fix adds the test that would have caught it, in the same change. | `[Review]` | — |
+| TA-005 | Suppression markers stay net-zero across a change. Fix the finding instead, or get the exemption label. | `[CI]` | `scripts/meta_guard.py` |
+
+## How a test is written
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| TA-010 | Assert **both** directions. A suite that only proves failure passes even if the code under test fails unconditionally. | `[Review]` | — |
+| TA-011 | Run the real artifact, never a copy of its logic. A test of a reimplementation proves nothing about the thing that ships. | `[Review]` | — |
+| TA-012 | Reproduce the target environment. A clean checkout or a clean virtualenv catches what a warm local machine hides. | `[Review]` | — |
+| TA-013 | A check that counts things prints its denominator. A loop that matched zero files reports success just as loudly as one that passed. | `[Review]` | — |
+| TA-014 | Backend tests are fast, isolated and deterministic — no network, no shared state, no ordering dependence. | `[Review]` | — |
+| TA-015 | A passing SQLite test is not evidence of PostgreSQL behaviour. Row-level security, locking, constraint timing, extensions and migration behaviour all differ; a claim about any of them needs evidence from PostgreSQL itself. Say in the PR which engine produced it. | `[Review]` | — |
+{%- if include_frontend %}
+| TA-016 | Frontend tests assert structure and behaviour — roles, presence, outcomes — not exact copy, which changes for reasons that are not bugs. | `[Review]` | — |
+{%- endif %}
+
+## Testing the guards themselves
+
+| ID | Rule | Enforcement | Mechanism |
+|---|---|---|---|
+| TA-020 | Every guard has a negative test proving it can still fail. A guard that silently stops inspecting anything reports green forever. | `[CI]` | `tests/guards/` |
+| TA-021 | A new guard's negative test is proven by sabotage: break the guard, confirm the expected test fails by name, restore. | `[Review]` | — |
+| TA-022 | A guard's test isolates the check under test, so one broken check cannot be masked by another failing first. | `[Review]` | — |
+| TA-023 | A `make` target and its CI job run the same checks. A check that runs only locally is absent from the merge gate. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
+| TA-024 | The aggregate required check fans in every job. A job missing from it cannot block a merge. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
