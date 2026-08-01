@@ -135,8 +135,9 @@ register entry fails, and a register entry whose marker is gone fails too, so th
 rot into a list of things fixed months ago.
 
 It does **not** fail merely because blockers are open; that would be red for your entire build
-phase and train you to ignore it. To block a release on them, run
-`python3 scripts/prod_readiness.py --strict` in your release workflow.
+phase and train you to ignore it. The release boundary is where it becomes strict:
+`make release-preflight TAG=vX.Y.Z` runs it with `--strict`, so a release does not happen while
+one is open.
 
 ## 4. Socket.dev — behavioural supply-chain analysis (recommended)
 
@@ -165,8 +166,28 @@ that could fail the release without strengthening the deploy gate. Two host-side
 - Make the GHCR packages pullable by the host — they inherit repo visibility; for a private repo,
   `docker login ghcr.io` there with a `read:packages` token.
 
-Then cut a release (`git tag v0.1.0 && git push origin v0.1.0`) and follow `deploy/README.md`
-(**verify signatures → start the base stack**). Pin images by `@sha256:` digest.
+### Cutting a release
+
+```bash
+make release-preflight TAG=v0.1.0        # fail-closed; nothing is tagged if it objects
+git tag -a v0.1.0 -m v0.1.0 && git push origin v0.1.0
+```
+
+The tag builds a **candidate**: each image built once, signed, an SBOM generated, and a signed
+`release-evidence.json` naming every image by digest attached to the GitHub Release. Nothing is
+promoted yet.
+
+To promote, run the **Release** workflow manually with `promote_tag` and type the same tag into
+`confirm`. It verifies the evidence signature, checks the evidence is for that tag, verifies each
+image signature, points `:stable` at the same digests, and prints the exact
+`BACKEND_IMAGE=…@sha256:…` lines for the host. It contains no build step, by design and by test.
+
+Then follow `deploy/README.md` (**verify signatures → start the base stack**). Pin images by
+`@sha256:` digest — never by tag.
+
+> **Holding a release.** Open an issue and apply the `release-blocker` label (provisioned by
+> `scripts/bootstrap-repo.sh`). While any such issue is open the preflight refuses, in CI and
+> locally. A hold that cannot be read — no `gh`, a failed lookup — counts as active.
 
 > **Release tags must be cut from the default branch.** Pushing a tag is an ordinary git
 > operation — it is the one route to production that skips PR review, code-owner review and

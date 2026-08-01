@@ -32,11 +32,18 @@ is empty when nothing does.
 | ID | Rule | Enforcement | Mechanism |
 |---|---|---|---|
 | REL-020 | Production stand-ins are registered, and each register entry still has a marker in the tree. The register and the code are checked against each other in both directions. | `[CI]` | `scripts/prod_readiness.py` |
-| REL-021 | A release is denied while any registered production blocker is open. The strict mode exists; no release path calls it yet. | `[Phase gate — v2.0]` | — |
+| REL-021 | A release is denied while any registered production blocker is open. Advisory during development, strict at the release boundary. | {% if include_deploy %}`[CI]` | `scripts/release_preflight.py`{% else %}`[Review]` | —{% endif %} |
 {%- if include_deploy %}
 | REL-022 | A release tag must be an ancestor of the default branch. Nothing is signed from an unmerged tree. | `[CI]` | `.github/workflows/release.yml` |
 | REL-023 | Images are signed and referenced by digest, and the signature is verified on the host before anything runs. | `[CI]` | `deploy/verify.sh` |
-| REL-024 | Deployment promotes the exact reviewed artifact. Rebuilding at deploy time ships bytes nobody reviewed, even from the same source. | `[Review]` | — |
-| REL-025 | A build-once candidate carries an SBOM, provenance, and an evidence-bound signed manifest, and promotion never rebuilds. | `[Phase gate — v2.0]` | — |
-| REL-026 | An owner-applied release-blocker label denies a release outright. | `[Phase gate — v2.0]` | — |
+| REL-024 | Deployment promotes the exact reviewed artifact. Rebuilding ships bytes nobody reviewed, even from the same source. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
+| REL-025 | A build-once candidate carries an SBOM and an evidence record, signed, and promotion never rebuilds. | `[CI]` | `.github/workflows/release.yml` |
+{%- endif %}
+| REL-026 | An owner-applied release-blocker label on an open issue denies a release outright, and a hold that cannot be read counts as active. | {% if include_deploy %}`[CI]` | `scripts/release_preflight.py`{% else %}`[Review]` | —{% endif %} |
+| REL-027 | Nothing is released without a changelog entry for that version. A release nobody downstream can evaluate is not finished. | {% if include_deploy %}`[CI]` | `scripts/release_preflight.py`{% else %}`[Review]` | —{% endif %} |
+| REL-028 | A published tag is never re-pointed. Moving it changes what that version means for everyone who already has it. | {% if include_deploy %}`[CI]` | `scripts/release_preflight.py`{% else %}`[Review]` | —{% endif %} |
+{%- if include_deploy %}
+| REL-029 | The release record names every image by digest. A tag is a mutable pointer, so evidence naming one records a name, not bytes. | `[CI]` | `scripts/release_evidence.py` |
+| REL-030 | Promotion verifies that the evidence in hand is the evidence **for that release**, not merely a valid document. | `[CI]` | `scripts/release_evidence.py` |
+| REL-031 | Moving what production pulls requires a typed confirmation. A control you can satisfy by reflex is not a control. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
 {%- endif %}

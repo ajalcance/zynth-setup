@@ -35,7 +35,7 @@ backend/                    FastAPI backend (Python 3.12)
   frontend/tests/           vitest + Testing Library
 {% endif %}{% if include_docs_site %}docs-site/                  documentation site
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
-{% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · standards_check.py · preflight.py · context.py · pr_declaration.py · risk_context.py · bootstrap-repo.sh
+{% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · standards_check.py · release_preflight.py · release_evidence.py · preflight.py · context.py · pr_declaration.py · risk_context.py · bootstrap-repo.sh
 tests/guards/               negative tests proving each guard in scripts/ CAN fail
 experience/                 registry.toml — lessons normalized onto the enforcement ladder
 docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITECTURE / PLAN / LESSONS / decisions
@@ -58,6 +58,13 @@ docs/standards/             the full rule suite — stable ids, honest enforceme
   ladder (reference → context → checklist → guard → production blocker). `make risk-context`
   matches the current diff to the entries that apply; CI **fails** if an entry claims `guard`
   enforcement without naming a mechanism that exists. See ADR-0008.
+- **Release evidence chain:** `make release-preflight TAG=vX.Y.Z` is fail-closed — an open
+  `release-blocker` issue, an open production blocker, a dirty or unmerged tree, a re-pointed tag
+  or missing release notes all stop a release, and a check that *cannot run* fails rather than
+  passing.{% if include_deploy %} On a `v*` tag the release workflow builds each image **once**, signs it,
+  generates an SBOM, and publishes a signed `release-evidence.json` naming every image by digest;
+  promotion is a separate manual step with a typed confirmation that verifies the evidence and
+  retags the same digests, and is asserted to contain no build step.{% endif %} See ADR-0010.
 - **Standards suite** (`docs/standards/`): every engineering rule stated once with a stable id
   (`BE`/`API`/`FE`/`TA`/`SEC`/`OBS`/`REL`) and a marker saying how it is *actually* enforced.
   `scripts/standards_check.py` fails CI if a rule claims a `[CI]` gate that does not exist, or if

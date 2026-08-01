@@ -54,8 +54,9 @@ is concentrated on **authority and policy** changes while routine work is checke
 | CI | Semantic correctness of a change | `[Review]` — human judgment |
 | CI | Workflow linting (actionlint, pinned + checksummed) and shell linting (shellcheck) | `[CI]` |
 | Release | Tag must be an ancestor of `main`; cosign-signed images by digest{% if include_deploy %}; verified on the host by `deploy/verify.sh`{% endif %} | `[CI]`{% if not include_deploy %} (enable the deploy module){% endif %} |
-| Release | Build-once candidate, SBOM + provenance, evidence-bound signed manifest, promote-without-rebuild | `[Phase gate — v2.0]` |
-| Release | Production readiness holds (register your own: IAM, approval separation, operational readiness) | `[CI]` mechanism live; the register ships **empty** — see §6 |
+| Release | Build-once candidate, SBOM, digest-pinned signed evidence, promote-without-rebuild | {% if include_deploy %}`[CI]` (`release.yml` + `release_evidence`){% else %}`[Review]` (enable the deploy module){% endif %} |
+| Release | Fail-closed preflight before a tag is cut — `make release-preflight TAG=vX.Y.Z` | {% if include_deploy %}`[CI]` (`release_preflight`, also run in the release `guard` job){% else %}`[Review]` — local only until the deploy module is enabled{% endif %} |
+| Release | Production readiness holds (register your own: IAM, approval separation, operational readiness) | {% if include_deploy %}`[CI]` — `--strict` runs in the release preflight; the register ships **empty**, see §6{% else %}`[Review]` — the mechanism is live, but no release path calls `--strict` without the deploy module{% endif %} |
 | Memory | Repository precedence + source-of-truth order | `[CI]` (`dod-check`) + `[Review]` (prose accuracy) |
 | Memory | Per-PR memory-impact declaration, cross-checked against the diff | `[CI]` (`pr_declaration`) |
 | Memory | ADR numbering/indexing + newest-first LESSONS ordering | `[CI]` (`dod-check`) |
@@ -89,7 +90,7 @@ blocked change fixes its underlying issue first:
 | `no-tests-needed` | a pure refactor/rename with no behavior change | `[CI]` (`meta_guard`) |
 | `sensitive-change-approved` | a reviewed change to a sensitive path (migrations, auth, audit chain) | `[CI]` (`meta_guard`) |
 | `allow-exemptions` | a justified threshold move or scanner-exemption growth | `[CI]` (`meta_guard`) |
-| `release-blocker` | an owner hold that denies release | `[Phase gate — v2.0]` |
+| `release-blocker` | an owner hold that denies release — applied to an **issue**, not a PR; while one is open the preflight refuses | {% if include_deploy %}`[CI]` (`release_preflight`){% else %}`[Review]` — `make release-preflight` reads it; no release workflow without the deploy module{% endif %} |
 
 ## 4. Source of truth
 
@@ -116,6 +117,11 @@ other in both directions.
 blocker]` marker anywhere in this document means *"the mechanism exists and this is where you would
 register that hold"*, **not** "a hold is currently active". Register your own as they appear (a
 stubbed auth layer, `CHANGE_ME` secrets, a mutable image tag). See [`../ONBOARDING.md`](../ONBOARDING.md).
+
+The register is **advisory during development and blocking at the release boundary**: open
+blockers do not redden every PR (a project would be red for its whole build phase, and everyone
+would learn to ignore it), but `make release-preflight TAG=vX.Y.Z` runs it with `--strict`, so a
+release does not happen while one is open.
 
 ## 6. Definition of Done
 

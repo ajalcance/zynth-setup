@@ -12,10 +12,10 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help context risk-context preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+.PHONY: help context risk-context preflight release-preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: context | risk-context | preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check"
+	@echo "Targets: context | risk-context | preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 backend:
@@ -85,6 +85,13 @@ fmt:
 {%- if include_docs_site %}
 	cd docs-site && npx prettier --write . >/dev/null
 {%- endif %}
+
+# Fail-closed checks that only matter at a release boundary: tag hygiene, an entry in the
+# changelog, open production blockers, release-blocker holds, and the doc/standards guards.
+# TAG is required — a release you did not name is a release you did not mean.
+release-preflight:
+	@test -n "$(TAG)" || { echo "usage: make release-preflight TAG=v1.2.3"; exit 1; }
+	python3 scripts/release_preflight.py --tag "$(TAG)"
 
 # Documentation consistency guards + the production-readiness register + standards honesty.
 dod-check:

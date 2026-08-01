@@ -78,11 +78,89 @@ def test_make_target_and_ci_job_run_the_same_checks(target, job):
     )
 
 
+RELEASE = REPO_ROOT / ".github" / "workflows" / "release.yml"
+# Word-bounded on purpose: `docker buildx imagetools create` copies an existing manifest and is
+# exactly what promotion is allowed to do, but a naive "docker build" substring matches it.
+BUILD_MARKERS = (
+    r"build-push-action",
+    r"docker\s+build\b",
+    r"buildx\s+build\b",
+    r"docker\s+compose\s+build\b",
+)
+
+
+def _release_jobs():
+    if not RELEASE.is_file():
+        pytest.skip("the deploy module is not enabled in this project")
+    return _workflow(RELEASE)["jobs"]
+
+
 def test_release_signing_is_gated_on_the_provenance_guard():
     """Pushing a tag is an ordinary git operation; nothing may be signed before the guard runs."""
-    release = REPO_ROOT / ".github" / "workflows" / "release.yml"
-    if not release.is_file():
-        pytest.skip("the deploy module is not enabled in this project")
-    jobs = _workflow(release)["jobs"]
+    jobs = _release_jobs()
     assert "guard" in jobs, "release.yml must have a provenance guard job"
-    assert "guard" in (jobs["images"].get("needs") or []), "image signing must depend on the guard"
+    assert "candidate" in jobs, "release.yml must build the candidate in a 'candidate' job"
+    assert "guard" in (jobs["candidate"].get("needs") or []), "building must depend on the guard"
+
+
+def test_the_guard_runs_the_release_preflight():
+    """The preflight is where the release-blocker hold and open production blockers are read."""
+    jobs = _release_jobs()
+    steps = " ".join(step.get("run", "") for step in jobs["guard"]["steps"])
+    assert "release_preflight.py" in steps, "the guard job must run the release preflight"
+    assert "--mode at-tag" in steps, "in CI the tag exists, so the at-tag direction applies"
+
+
+def test_promotion_never_rebuilds():
+    """Promotion that rebuilds is not promotion — it ships bytes nobody reviewed.
+
+    This is the whole point of a build-once candidate, and it is one careless copied step away
+    from being false, so it is asserted rather than trusted to the comment that says it.
+    """
+    jobs = _release_jobs()
+    assert "promote" in jobs, "release.yml must have a promote job"
+    body = yaml.safe_dump(jobs["promote"])
+    found = [marker for marker in BUILD_MARKERS if re.search(marker, body)]
+    assert not found, f"the promote job contains build step(s): {found}"
+
+
+def test_the_rebuild_check_would_catch_a_real_build_step():
+    """The check above passes trivially if its patterns match nothing. Prove they match."""
+    sample = "steps:\n- uses: docker/build-push-action@abc\n- run: docker build . && buildx build ."
+    found = [marker for marker in BUILD_MARKERS if re.search(marker, sample)]
+    assert len(found) >= 3, f"the build markers do not detect an obvious build: {found}"
+    allowed = "run: docker buildx imagetools create --tag x:stable y@sha256:0"
+    assert not [m for m in BUILD_MARKERS if re.search(m, allowed)], "retagging is not a build"
+
+
+def test_promotion_requires_a_typed_confirmation():
+    """Moving what production pulls must not be satisfiable by reflex.
+
+    The step must actually COMPARE the two inputs. Asserting only that an `exit 1` appears
+    somewhere passes against `if false; then ... exit 1; fi` — a confirmation that can never
+    fail, which is the exact shape this check exists to rule out.
+    """
+    if not RELEASE.is_file():
+        pytest.skip("the deploy module is not enabled in this project")
+    workflow = _workflow(RELEASE)
+    inputs = workflow[True]["workflow_dispatch"]["inputs"]
+    assert {"promote_tag", "confirm"} <= set(inputs), "promotion needs a tag and a confirmation"
+
+    comparing = [
+        step
+        for step in workflow["jobs"]["promote"]["steps"]
+        if "promote_tag" in str(step.get("env", "")) and "confirm" in str(step.get("env", ""))
+    ]
+    assert comparing, "no promote step reads both promote_tag and confirm"
+    body = " ".join(step.get("run", "") for step in comparing)
+    assert "!=" in body, "the confirmation must compare the two inputs, not just exist"
+    assert "exit 1" in body, "a mismatched confirmation must fail the job"
+
+
+def test_promotion_verifies_the_evidence_belongs_to_this_release():
+    """A valid evidence document from another release would promote the wrong bytes."""
+    jobs = _release_jobs()
+    steps = " ".join(step.get("run", "") for step in jobs["promote"]["steps"])
+    assert "cosign verify-blob" in steps, "the evidence signature must be verified"
+    assert "--expect-tag" in steps, "the evidence must be checked against the tag being promoted"
+    assert "cosign verify " in steps, "every image digest must be verified before promotion"

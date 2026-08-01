@@ -6,6 +6,7 @@ their logic. A test of a copy proves nothing about the guard that actually gates
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -16,13 +17,22 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "scripts"
 
 
-def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False, timeout=120)
+def run(
+    cmd: list[str], cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    # `env` is merged over the real environment, never replacing it: a guard that shells out to
+    # git or python must keep finding them. Used to put a stub tool earlier on PATH.
+    merged = {**os.environ, **env} if env else None
+    return subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, check=False, timeout=120, env=merged
+    )
 
 
-def run_guard(script: Path, *args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def run_guard(
+    script: Path, *args: str, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run a guard script and return the completed process (never raises on failure)."""
-    return run([sys.executable, str(script), *args], cwd or script.resolve().parents[1])
+    return run([sys.executable, str(script), *args], cwd or script.resolve().parents[1], env)
 
 
 def install_guard(sandbox: Path, name: str) -> Path:

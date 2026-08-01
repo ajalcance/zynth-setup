@@ -45,6 +45,28 @@ for ruleset_file in "${ruleset_files[@]}"; do
   fi
 done
 
+# ------------------------------------------------------------------------------
+# Protected-change labels. The workflows READ these labels; GitHub only lets you apply a
+# label that exists, so an unprovisioned label is an override nobody can grant and a hold
+# nobody can place. Idempotent: --force updates an existing label rather than failing.
+# ------------------------------------------------------------------------------
+labels=(
+  "guardrail-change|B60205|A deliberate, reviewed change to a guard-defining file"
+  "allow-suppressions|D93F0B|A justified new suppression marker"
+  "no-tests-needed|FBCA04|A pure refactor or rename with no behaviour change"
+  "sensitive-change-approved|B60205|A reviewed change to a sensitive path"
+  "allow-exemptions|D93F0B|A justified threshold move or scanner-exemption growth"
+  "release-blocker|000000|An owner hold: while an issue carries this, releases are denied"
+)
+echo
+echo "Provisioning protected-change labels on $repo ..."
+for entry in "${labels[@]}"; do
+  IFS='|' read -r name colour description <<<"$entry"
+  gh label create "$name" --repo "$repo" --color "$colour" --description "$description" --force >/dev/null
+  echo "✓ label '$name'"
+done
+
 echo
 echo "Verify:  gh api repos/$repo/rulesets --jq '.[].name'"
+echo "         gh label list --repo $repo"
 echo "Note: the required check is 'ci-complete' — the first PR wires it up once CI has run once."

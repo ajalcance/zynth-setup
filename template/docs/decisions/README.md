@@ -18,3 +18,4 @@ silently.
 - [0007 — Low-friction agent permission model](0007-agent-permission-model.md)
 - [0008 — Experience-to-control loop](0008-experience-to-control-loop.md)
 - [0009 — Standards suite with honest enforcement markers](0009-standards-suite-with-honest-enforcement.md)
+- [0010 — Release evidence chain](0010-release-evidence-chain.md)

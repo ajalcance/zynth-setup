@@ -1,17 +1,25 @@
 # ==============================================================================
-# Release — build, push and SIGN the deployable images
+# Release — build ONCE, record the evidence, promote the same bytes
 # ==============================================================================
-# On a version tag (v*), builds the backend (and frontend if present), pushes to
-# GHCR, and signs each image keyless with cosign (GitHub OIDC — no key to manage).
-# The deploy host verifies the signature before running anything (deploy/verify.sh),
-# so only the exact CI-built image is deployable. See docs/decisions/0004.
+# Two entry points, and they do different things on purpose:
+#
+#   push of a v* tag  -> guard + candidate. Builds each image once, pushes it to GHCR,
+#                        signs it keyless with cosign (GitHub OIDC), generates an SBOM,
+#                        and publishes a signed release-evidence.json naming every image
+#                        by DIGEST. Nothing is promoted.
+#   workflow_dispatch -> promote. Verifies the evidence signature and each image
+#                        signature, then points the :stable tag at the SAME digests.
+#                        It contains no build step: promotion that rebuilds is not
+#                        promotion, it ships bytes nobody reviewed from the same source.
 #
 # Signing is cosign-only, deliberately. The GitHub Attestations API
 # (actions/attest-build-provenance) is not available on every plan/visibility, and
 # `deploy/verify.sh` only ever calls `cosign verify` — so an attestation was never
 # load-bearing for the deploy gate, it just added a step that could fail the release.
 # Builds also set `provenance: false` so each push is a single manifest and the signed
-# digest is unambiguously the digest of the image that runs.
+# digest is unambiguously the digest of the image that runs. Provenance therefore lives
+# in the evidence document (a signed blob), NOT in an OCI attestation manifest that
+# would change what `outputs.digest` refers to. See docs/decisions/0010.
 # ==============================================================================
 
 name: Release
@@ -20,6 +28,15 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      promote_tag:
+        description: "Release tag to promote to :stable (e.g. v1.2.3)"
+        required: true
+        type: string
+      confirm:
+        description: "Type the SAME tag again to confirm — promotion moves what production pulls"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -33,7 +50,11 @@ jobs:
   # legitimate: a valid signature attesting to the wrong thing. Refuse to sign anything that
   # is not reachable from the default branch. See docs/decisions/0004.
   guard:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read # release-blocker holds
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -53,15 +74,39 @@ jobs:
           fi
           echo "✓ ${GITHUB_SHA} is reachable from ${DEFAULT_BRANCH} — safe to build and sign."
 
-  images:
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      # The same preflight `make release-preflight` runs locally, in at-tag mode: the tag now
+      # exists and must be HEAD. Fail-closed — an open release-blocker issue, an open production
+      # blocker, a missing changelog entry or drifting docs all stop the release here, before
+      # anything is built or signed.
+      - name: Release preflight (fail-closed)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          python3 scripts/release_preflight.py \
+            --tag "${GITHUB_REF_NAME}" \
+            --mode at-tag \
+            --base-ref "origin/${DEFAULT_BRANCH}"
+
+  # ---- The candidate: built once, signed, and recorded ---------------------------------
+  candidate:
     needs: guard
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # attach evidence + SBOMs to the GitHub Release
       packages: write # push to GHCR
       id-token: write # cosign keyless signing (OIDC)
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
 
       - name: Registry namespace (GHCR requires lowercase)
         id: ns
@@ -94,12 +139,19 @@ jobs:
           provenance: false
           tags: |
             ghcr.io/${{ steps.ns.outputs.repo }}-backend:${{ github.ref_name }}
-            ghcr.io/${{ steps.ns.outputs.repo }}-backend:latest
 
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Sign backend (keyless)
         run: cosign sign --yes "ghcr.io/${{ steps.ns.outputs.repo }}-backend@${{ steps.backend.outputs.digest }}"
+
+      - name: SBOM for backend
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ghcr.io/${{ steps.ns.outputs.repo }}-backend@${{ steps.backend.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-backend.spdx.json
+          upload-artifact: false
 
       # ---- frontend (only if it exists) ----
       - name: Detect frontend
@@ -119,8 +171,166 @@ jobs:
           provenance: false # single manifest, so digest == image (see backend step)
           tags: |
             ghcr.io/${{ steps.ns.outputs.repo }}-frontend:${{ github.ref_name }}
-            ghcr.io/${{ steps.ns.outputs.repo }}-frontend:latest
 
       - name: Sign frontend (keyless)
         if: steps.fe.outputs.exists == 'true'
         run: cosign sign --yes "ghcr.io/${{ steps.ns.outputs.repo }}-frontend@${{ steps.frontend.outputs.digest }}"
+
+      - name: SBOM for frontend
+        if: steps.fe.outputs.exists == 'true'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ghcr.io/${{ steps.ns.outputs.repo }}-frontend@${{ steps.frontend.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-frontend.spdx.json
+          upload-artifact: false
+
+      # ---- Evidence: what was built, from what, and which exact bytes were signed ----
+      # Validated immediately after it is written, so a malformed record fails the release
+      # rather than being discovered by whoever needs it after an incident.
+      - name: Build release evidence
+        env:
+          REPO_NS: ${{ steps.ns.outputs.repo }}
+          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest }}
+          HAS_FRONTEND: ${{ steps.fe.outputs.exists }}
+        run: |
+          args=(--emit --tag "${GITHUB_REF_NAME}" --commit "${GITHUB_SHA}"
+                --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+                --image "backend=ghcr.io/${REPO_NS}-backend@${BACKEND_DIGEST}"
+                --sbom "backend=sbom-backend.spdx.json")
+          if [ "$HAS_FRONTEND" = "true" ]; then
+            args+=(--image "frontend=ghcr.io/${REPO_NS}-frontend@${FRONTEND_DIGEST}"
+                   --sbom "frontend=sbom-frontend.spdx.json")
+          fi
+          python3 scripts/release_evidence.py "${args[@]}" --out release-evidence.json
+          python3 scripts/release_evidence.py --validate release-evidence.json \
+            --expect-tag "${GITHUB_REF_NAME}"
+
+      - name: Sign the evidence (keyless)
+        run: |
+          cosign sign-blob --yes \
+            --bundle release-evidence.bundle \
+            release-evidence.json
+
+      # The release is where a later reader looks. Evidence that lives only in a workflow log
+      # expires with the log retention window.
+      - name: Publish the release with its evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            release-evidence.json release-evidence.bundle sbom-*.spdx.json \
+            || gh release upload "${GITHUB_REF_NAME}" \
+                 release-evidence.json release-evidence.bundle sbom-*.spdx.json --clobber
+          {
+            echo "### Release candidate ${GITHUB_REF_NAME}"
+            echo
+            echo 'Signed and recorded. Nothing is promoted yet — run this workflow manually,'
+            echo 'giving this tag as promote_tag, to point the stable tag at these digests.'
+            echo
+            echo '~~~json'
+            cat release-evidence.json
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- Promotion: the same bytes, verified, never rebuilt ------------------------------
+  # This job deliberately contains NO build step. Its whole purpose is that the thing which
+  # reaches production is the artifact that was already built, signed and reviewed — a
+  # rebuild from the same source produces different bytes that nobody has looked at.
+  promote:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # retag an existing digest; no build
+      id-token: write # cosign verification
+    steps:
+      # Promotion moves what production pulls, so it is not a single click. The tag must be
+      # typed twice and the two must match exactly — a confirmation you cannot satisfy by
+      # reflex is the point.
+      - name: Typed confirmation
+        env:
+          PROMOTE_TAG: ${{ inputs.promote_tag }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$PROMOTE_TAG" != "$CONFIRM" ]; then
+            echo "::error title=Not confirmed::confirm ('$CONFIRM') does not match promote_tag \
+          ('$PROMOTE_TAG'). Nothing was promoted."
+            exit 1
+          fi
+          echo "✓ confirmed: promoting $PROMOTE_TAG"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Fetch the evidence for this release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROMOTE_TAG: ${{ inputs.promote_tag }}
+        run: |
+          gh release download "$PROMOTE_TAG" \
+            --pattern 'release-evidence.json' --pattern 'release-evidence.bundle' --clobber
+
+      # --expect-tag is the check that matters here: a valid evidence document from a
+      # DIFFERENT release would otherwise pass every structural test and promote the wrong bytes.
+      - name: Verify the evidence is signed, well-formed, and for this release
+        env:
+          PROMOTE_TAG: ${{ inputs.promote_tag }}
+        run: |
+          cosign verify-blob \
+            --bundle release-evidence.bundle \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            release-evidence.json
+          python3 scripts/release_evidence.py --validate release-evidence.json \
+            --expect-tag "$PROMOTE_TAG"
+
+      # Verify every recorded digest is signed by this repo's release workflow, then move the
+      # :stable tag onto that exact digest. `imagetools create` copies an existing manifest —
+      # the digest is preserved, so :stable and the recorded digest are the same bytes.
+      - name: Verify signatures and point :stable at the recorded digests
+        run: |
+          identity="^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/"
+          issuer="https://token.actions.githubusercontent.com"
+          python3 scripts/release_evidence.py --list images release-evidence.json > images.txt
+          while read -r image; do
+            echo "Verifying $image"
+            cosign verify "$image" \
+              --certificate-identity-regexp "$identity" \
+              --certificate-oidc-issuer "$issuer" >/dev/null
+            repo="${image%@*}"
+            docker buildx imagetools create --tag "${repo}:stable" "$image"
+            echo "  ✓ ${repo}:stable now points at ${image#*@}"
+          done < images.txt
+
+      - name: Report what production should pull
+        env:
+          PROMOTE_TAG: ${{ inputs.promote_tag }}
+        run: |
+          {
+            echo "### Promoted ${PROMOTE_TAG}"
+            echo
+            echo 'Set these on the deploy host — by digest, never by tag:'
+            echo
+            echo '~~~'
+            python3 scripts/release_evidence.py --list env release-evidence.json
+            echo '~~~'
+            echo
+            echo 'Then run deploy/verify.sh on the host before bringing the stack up.'
+          } >> "$GITHUB_STEP_SUMMARY"
