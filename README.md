@@ -33,6 +33,20 @@ ruleset + required reviews), not in a file the agent can edit. The full reasonin
 - **CI/CD + security gates** — lint, format, strict type-check, SAST (Semgrep), secret scanning (gitleaks), dependency audit, tests, and **doc-consistency guards** that fail the build if docs drift from code.
 - **Pre-commit / pre-push gates** — gitleaks, private-key detection, hygiene hooks.
 - **A fail-closed backend skeleton** (FastAPI) whose `make check` is **green out of the box**.
+- **A control system that says what it actually enforces** ([ADR-0006](template/docs/decisions/0006-engineering-process-and-control-system.md)) —
+  every control carries an honest marker: `[CI]` means a gate catches it today, `[Review]` means
+  nothing will. Claiming automation you don't have is itself a build failure.
+- **Guard fault tests** — negative tests proving each guard can still fail, because a check that
+  silently stops inspecting anything reports green forever.
+- **An engineering standards suite** with stable, citable rule ids (`BE-004`, `SEC-010`, …), each
+  declaring how it is really enforced ([ADR-0009](template/docs/decisions/0009-standards-suite-with-honest-enforcement.md)).
+- **An experience-to-control loop** — recorded lessons on a five-rung enforcement ladder, retrieved
+  by diff ([ADR-0008](template/docs/decisions/0008-experience-to-control-loop.md)).
+- **An agent permission model** — routine work runs unprompted; policy, release and destructive
+  actions ask; secret reads are denied ([ADR-0007](template/docs/decisions/0007-agent-permission-model.md)).
+- **A release evidence chain** — a fail-closed preflight, build-once signed candidates with SBOMs,
+  a digest-pinned signed record of what shipped, and promotion that never rebuilds
+  ([ADR-0010](template/docs/decisions/0010-release-evidence-chain.md)).
 
 ### Choosing your optional modules
 
