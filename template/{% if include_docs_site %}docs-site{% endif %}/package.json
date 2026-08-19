@@ -9,7 +9,6 @@
     "lint": "eslint --max-warnings=0"
   },
   "dependencies": {
-    "gray-matter": "^4.0.3",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -26,8 +25,9 @@
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "^8.5.22",
-    "sharp": "^0.35.3"
+    "postcss": "^8.5.26",
+    "sharp": "^0.35.3",
+    "nanoid": "^3.3.18"
   },
   "engines": {
     "node": ">=22 <23"
