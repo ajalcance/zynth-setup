@@ -6,10 +6,12 @@ ship without a decision in all four registries (telemetry + these three).
 
 from __future__ import annotations
 
-from {{ python_package }}.command.audit import AUDIT_EXEMPT, AUDITABLE_ACTIONS
+from {{ python_package }}.command.audit import AUDIT_EXEMPT, AUDITABLE_ACTIONS, SEALABLE_SOURCE
 from {{ python_package }}.command.controls import ACTION_CONTROLS, CONTROL_EXEMPT, CONTROLS_BY_ID
+from {{ python_package }}.command.models import Event
 from {{ python_package }}.command.rules import BASELINE_ONLY, DEFAULT_RULES
-from {{ python_package }}.telemetry.registry import COVERAGE, NON_ROUTE_ACTIONS
+from {{ python_package }}.telemetry.envelope import SOURCE_CLIENT, SOURCE_SERVER, make_event
+from {{ python_package }}.telemetry.registry import CLIENT_ACTIONS, COVERAGE, NON_ROUTE_ACTIONS
 
 _EMITTED = {a for actions in COVERAGE.values() for a in actions} | NON_ROUTE_ACTIONS
 
@@ -51,3 +53,56 @@ def test_control_mappings_reference_real_controls() -> None:
     for action, ids in ACTION_CONTROLS.items():
         for cid in ids:
             assert cid in CONTROLS_BY_ID, f"{action} maps to unknown control {cid}"
+
+
+# --- The client/server trust boundary (docs/decisions/0011) -----------------------------------
+
+
+def test_no_client_reported_action_is_auditable() -> None:
+    """The chain records what this service observed, not what a browser claimed.
+
+    Sealing a client report would give a claim the same cryptographic standing as an
+    observation — and the chain is never purged, so the mistake is permanent.
+    """
+    sealed = CLIENT_ACTIONS & AUDITABLE_ACTIONS
+    assert not sealed, (
+        "Client-reported actions listed as auditable: "
+        f"{sorted(sealed)}. A client-reported event is evidence that something was SAID, not "
+        "that it happened. Keep them in AUDIT_EXEMPT."
+    )
+
+
+def test_no_client_reported_action_is_compliance_evidence() -> None:
+    """An auditor asking 'prove this happened' needs an observation, not a claim."""
+    mapped = CLIENT_ACTIONS & set(ACTION_CONTROLS)
+    assert not mapped, f"Client-reported actions mapped to controls: {sorted(mapped)}"
+
+
+def test_client_actions_are_actually_emitted() -> None:
+    """A stale entry here would silently stop protecting anything."""
+    assert (
+        CLIENT_ACTIONS <= _EMITTED
+    ), f"CLIENT_ACTIONS names actions nothing emits: {sorted(CLIENT_ACTIONS - _EMITTED)}"
+
+
+def test_the_registry_is_not_vacuously_empty() -> None:
+    """Every assertion above passes trivially against an empty set. It must not be empty."""
+    assert CLIENT_ACTIONS, "CLIENT_ACTIONS is empty — the boundary guards check nothing"
+
+
+def test_only_server_observed_events_are_sealable() -> None:
+    assert SEALABLE_SOURCE == SOURCE_SERVER
+
+
+def test_the_event_model_default_matches_the_envelope() -> None:
+    """models.py hardcodes the default to avoid an import cycle; the two must not drift."""
+    assert Event.__table__.c.source.default.arg == SOURCE_SERVER
+
+
+def test_an_event_is_server_sourced_unless_it_says_otherwise() -> None:
+    """The safe value is the default: forgetting the field must not mark data untrusted."""
+    assert make_event(category="c", action="a", outcome="success")["source"] == SOURCE_SERVER
+    assert (
+        make_event(category="c", action="a", outcome="success", source=SOURCE_CLIENT)["source"]
+        == SOURCE_CLIENT
+    )

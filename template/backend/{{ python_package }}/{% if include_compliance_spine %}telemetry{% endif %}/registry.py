@@ -22,7 +22,18 @@ EXEMPT: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+# Actions REPORTED BY A CLIENT rather than observed by this service. They are ordinary events —
+# queryable, alertable, retained — but they may never enter the tamper-evident audit chain, and
+# the coverage guards fail if one is listed as auditable. See docs/decisions/0011.
+CLIENT_ACTIONS: frozenset[str] = frozenset(
+    {
+        "client.error",
+        "client.route_view",
+    }
+)
+
 # route → envelope actions it emits (directly or via the layers it calls).
 COVERAGE: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/v1/example"): ("example.viewed",),
+    ("POST", "/api/v1/client-events"): tuple(sorted(CLIENT_ACTIONS)),
 }

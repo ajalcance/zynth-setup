@@ -1,0 +1,130 @@
+"""Client-reported events — the one place a browser can write into the spine.
+
+A client can see things this service cannot: a JavaScript exception, a route that rendered, a
+content-security-policy violation. That signal is worth having. What it is *not* is evidence:
+everything in the request body was written by code running on someone else's machine, and a
+determined caller can put anything in it.
+
+So the endpoint is built around one rule — **the client supplies what it saw, never who saw it**:
+
+- **Authentication is required.** Anonymous is rejected outright rather than recorded as
+  ``system``; an event nobody can be asked about is not worth the row it occupies.
+- **Actor, session, IP, timestamp and event id are taken from the request**, never from the body.
+  A caller cannot attribute its report to someone else.
+- **The action must be on the allowlist.** Free-form actions would let a client mint event types
+  that detection rules and compliance maps have never seen.
+- **Severity is capped below ``critical``.** Severity drives alerting, so a caller that can
+  declare its own report critical can page whoever is on call, from a laptop, at will.
+- **``source`` is stamped ``client``**, which is what keeps these events out of the audit chain
+  (``command.audit.SEALABLE_SOURCE``) and out of the compliance map.
+- **Metadata is bounded** in key count and value length, and flat: a durable store is the wrong
+  place to discover that someone posted a megabyte of nested JSON.
+
+Retention, not immutability, is the containment strategy here — these rows expire with the
+ordinary events window, and they can never reach the chain, which is the part that is never purged.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from redis.asyncio import Redis
+
+from {{ python_package }}.auth import Principal, require_user
+from {{ python_package }}.cache.redis import get_redis
+from {{ python_package }}.telemetry import SOURCE_CLIENT, Telemetry, get_telemetry
+from {{ python_package }}.telemetry.registry import CLIENT_ACTIONS
+
+router = APIRouter(prefix="/api/v1", tags=["client-events"])
+
+# Severities a client may claim. `critical` is deliberately absent: it drives alerting, and a
+# caller able to declare its own report critical can page the on-call rota from a browser tab.
+ALLOWED_SEVERITIES = ("info", "warn")
+ALLOWED_OUTCOMES = ("success", "failure")
+
+MAX_METADATA_KEYS = 12
+MAX_VALUE_LENGTH = 512
+
+# Reports accepted per authenticated session per window. Deliberately generous: this exists to
+# bound a runaway retry loop, not to police normal use. It fails OPEN when Redis is unreachable,
+# which is safe here for a specific reason — the emitter writes to that same Redis, so if it is
+# down nothing is being stored either. The cap and the storage share a failure mode.
+RATE_LIMIT = 120
+RATE_WINDOW_SECONDS = 60
+
+
+class ClientEvent(BaseModel):
+    """What a client is allowed to tell us. Everything else is decided server-side."""
+
+    action: str = Field(description="one of the allowlisted client actions")
+    outcome: str = Field(default="failure", description="success | failure")
+    severity: str = Field(default="info", description="info | warn")
+    metadata: dict[str, str] = Field(
+        default_factory=dict, description="flat string map; bounded in size"
+    )
+
+
+async def _within_rate_limit(redis: Redis, principal: Principal) -> bool:
+    """Per-session counter with a TTL. Fail-open — see RATE_LIMIT above for why that is safe."""
+    key = f"client-events:rate:{principal.id}:{principal.sid}"
+    try:
+        count = await redis.incr(key)
+        if count == 1:
+            await redis.expire(key, RATE_WINDOW_SECONDS)
+        return int(count) <= RATE_LIMIT
+    except Exception:  # noqa: BLE001 — an unreachable Redis is not a reason to reject a request
+        return True
+
+
+def _clean_metadata(metadata: dict[str, str]) -> dict[str, str]:
+    if len(metadata) > MAX_METADATA_KEYS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"metadata may carry at most {MAX_METADATA_KEYS} keys",
+        )
+    return {str(key)[:64]: str(value)[:MAX_VALUE_LENGTH] for key, value in metadata.items()}
+
+
+@router.post("/client-events", status_code=status.HTTP_202_ACCEPTED)
+async def report_client_event(
+    event: ClientEvent,
+    principal: Principal = Depends(require_user),
+    tel: Telemetry = Depends(get_telemetry),
+    redis: Redis = Depends(get_redis),
+) -> dict[str, Any]:
+    """Record something the client observed, attributed to the authenticated caller."""
+    if event.action not in CLIENT_ACTIONS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"unknown client action '{event.action}' — allowed: {sorted(CLIENT_ACTIONS)}",
+        )
+    if event.severity not in ALLOWED_SEVERITIES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"severity must be one of {list(ALLOWED_SEVERITIES)}",
+        )
+    if event.outcome not in ALLOWED_OUTCOMES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"outcome must be one of {list(ALLOWED_OUTCOMES)}",
+        )
+    if not await _within_rate_limit(redis, principal):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"more than {RATE_LIMIT} client events in {RATE_WINDOW_SECONDS}s for this session",
+        )
+
+    # actor_type / actor_id / sid / ip are NOT passed: the emitter binds them from the verified
+    # request, and passing them here is exactly how a caller would attribute a report to someone
+    # else. `source` is the field that keeps this out of the audit chain.
+    await tel.emit(
+        category="client",
+        action=event.action,
+        outcome=event.outcome,
+        severity=event.severity,
+        source=SOURCE_CLIENT,
+        metadata=_clean_metadata(event.metadata),
+    )
+    return {"accepted": True}

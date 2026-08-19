@@ -7,11 +7,11 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from {{ python_package }}.command.audit import seal_new, verify_chain
+from {{ python_package }}.command.audit import AUDITABLE_ACTIONS, seal_new, verify_chain
 from {{ python_package }}.command.consumer import consume_once
 from {{ python_package }}.command.models import Event
 from {{ python_package }}.telemetry.emitter import emit
-from {{ python_package }}.telemetry.envelope import make_event
+from {{ python_package }}.telemetry.envelope import SOURCE_CLIENT, make_event
 
 
 async def test_ingest_seal_and_verify(fake_redis: FakeRedis, session: AsyncSession) -> None:
@@ -42,3 +42,40 @@ async def test_example_route_emits_ingestable_event(
     assert stored == 1
     event = (await session.execute(select(Event))).scalar_one()
     assert event.action == "example.viewed"
+
+
+async def test_a_client_reported_event_is_never_sealed(
+    fake_redis: FakeRedis, session: AsyncSession
+) -> None:
+    """The runtime half of the trust boundary (docs/decisions/0011).
+
+    The static guard in test_coverage_guards.py stops a client action being *registered* as
+    auditable. This proves the sealing query itself refuses one — so a mistake in the registry
+    and a mistake in the code are two independent failures, not one.
+    """
+    auditable = next(iter(AUDITABLE_ACTIONS))
+    await emit(
+        fake_redis,
+        make_event(category="client", action=auditable, outcome="success", source=SOURCE_CLIENT),
+    )
+    await consume_once(fake_redis, session)
+
+    stored = (await session.execute(select(Event))).scalars().all()
+    assert len(stored) == 1, "the event must still be stored — it is data, just not evidence"
+    assert stored[0].source == SOURCE_CLIENT
+
+    sealed = await seal_new(session)
+    assert sealed == 0, (
+        "a client-reported event was sealed into the audit chain even though its action is "
+        "auditable — the source filter in seal_new is not doing anything"
+    )
+
+
+async def test_a_server_observed_event_with_the_same_action_is_sealed(
+    fake_redis: FakeRedis, session: AsyncSession
+) -> None:
+    """The other direction: the filter must not be refusing everything."""
+    auditable = next(iter(AUDITABLE_ACTIONS))
+    await emit(fake_redis, make_event(category="x", action=auditable, outcome="success"))
+    await consume_once(fake_redis, session)
+    assert await seal_new(session) == 1

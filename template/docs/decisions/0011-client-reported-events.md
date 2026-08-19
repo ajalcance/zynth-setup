@@ -1,0 +1,96 @@
+# 0011. Client-reported events are data, never evidence
+
+Date: 2026-08-19
+
+## Status
+
+Accepted.
+
+## Context
+
+A browser sees things this service cannot: a JavaScript exception, a route that rendered, a
+content-security-policy violation, a request that never arrived. That signal is genuinely useful,
+and until now there was no way to get it into the spine at all.
+
+The obvious implementation — a `POST /telemetry` endpoint that accepts an event envelope — is the
+wrong one, and its wrongness is easy to miss because the result looks correct. The audit chain in
+`command/audit.py` hashes each entry over the previous one, so nothing can be altered after the
+fact. That is a guarantee about **integrity**, not **provenance**. An accepted client payload with
+a chosen `actor_id` becomes a permanently sealed, cryptographically verifiable falsehood. A log
+with strong integrity and weak provenance is worse than no log, because people believe it.
+
+Three further properties make it worse rather than merely bad:
+
+- The chain is **never purged**. Client error context routinely carries URLs with query
+  parameters and form values, so client data in the chain is personal data that cannot be erased
+  without breaking the chain — a direct conflict with an erasure request.
+- The cold store and the chain are **unbounded**, unlike the Redis stream, which is capped.
+- No rate limiting existed anywhere in the template.
+
+The underlying confusion is that "client telemetry" names two unrelated things. **Attributed user
+actions** ("user X exported the report") must never be client-reported, and never were: if the
+action matters, it went through an API call and the server emitted it with a principal it verified
+itself. **Client-observed conditions** are the actual gap, and they are observability, not
+attestation.
+
+## Decision
+
+Add a **source** axis to the envelope, orthogonal to the existing actor axis. The actor records
+*who acted*; `source` records *who observed it* — `server` (this service saw it) or `client` (a
+browser said so). It defaults to `server`, so forgetting the field cannot mark trusted data
+untrusted.
+
+Client-reported events are then contained by construction:
+
+- `command/audit.seal_new` selects only `source == server`. A client report can never enter the
+  chain even if its action is listed as auditable.
+- A coverage guard fails if any action in `telemetry/registry.CLIENT_ACTIONS` appears in
+  `AUDITABLE_ACTIONS` or in the compliance map.
+- Containment is by **retention**, not immutability: these rows expire with the ordinary events
+  window. They are queryable, alertable and disposable.
+
+`POST /api/v1/client-events` is the single ingest point, built on one rule — **the client supplies
+what it saw, never who saw it**:
+
+- authentication is required, and anonymous is rejected rather than recorded as `system`;
+- actor, session, IP, timestamp and event id come from the request, never the body;
+- the action must be on an allowlist;
+- severity is capped below `critical`;
+- metadata is flat and bounded in key count and value length;
+- a per-session rate cap bounds a runaway client.
+
+## Rationale
+
+- **The distinction cannot be recovered later.** Once an event is a row, nothing in its fields
+  says whether the service observed it or was told it. So it is recorded at emission or not at all.
+- **Two independent layers, because a registry mistake and a code mistake are different
+  mistakes.** The static guard catches a wrong entry in a registry; the `seal_new` filter catches
+  wrong code. Either alone would leave the other class of error undetected.
+- **`require_user`, not `get_principal`.** The existing dependency returns anonymous when there is
+  no token, which is right for a public route that merely wants to name an actor when there is
+  one. Any route that writes on the caller's behalf needs the stricter form — an event attributed
+  to `system` because nobody was signed in is an event nobody can be asked about.
+- **Severity is capped below `critical` on purpose.** Severity drives the detection catch-all
+  rule, so a caller that can declare its own report critical can page the on-call rota from a
+  browser tab.
+- **The rate cap fails open, and that is safe here specifically.** It counts in the same Redis the
+  emitter writes to, so if Redis is unreachable nothing is being stored either. The cap and the
+  storage share a failure mode; this reasoning does not transfer to a rate limit on anything else.
+- **Anonymous ingest was considered and rejected for now.** It would catch pre-login breakage,
+  which is when frontend errors are most interesting — but it is the only variant that opens an
+  unauthenticated write, and it needs general-purpose rate limiting the template does not have.
+  Revisit as its own decision, not as a quiet widening of this one.
+- **`source` is a separate migration**, not an edit to `0001`, because a project generated earlier
+  has already applied `0001` and folding the column in would leave its database silently behind.
+
+## Consequences
+
+- Client signal is available, queryable, and alertable, without weakening what the chain means.
+- The boundary is mechanical: an agent wiring client reports into the audit chain gets a red build
+  naming the rule, not a silent downgrade of the audit log's meaning.
+- The erasure conflict is avoided rather than managed — client data never reaches the record that
+  cannot be purged.
+- **Non-goal: the browser-side reporter.** What is worth reporting, and when, is product-specific;
+  the framework ships the boundary and the endpoint, and the application decides what to send.
+- Cost: one column, one migration, one route, one dependency, and two registry entries per client
+  action. Bounded by the same coverage guards every other action already satisfies.

@@ -89,6 +89,9 @@ docs/standards/             the full rule suite — stable ids, honest enforceme
   compliance-control catalogs. **Four CI coverage-guards** enforce that every emitted action is
   registered for emit + detection + audit + compliance. One example instrumented route
   (`GET /api/v1/example`) demonstrates the pattern; the worker (`command/worker.py`) ingests + seals.
+  Client-reported events (`POST /api/v1/client-events`) are authenticated, server-attributed,
+  allowlisted, rate-capped and stamped `source=client` — they are queryable data but can never
+  enter the audit chain or the compliance map (ADR-0011).
   A signed bearer token (`auth/`) resolves the request **principal**, recorded as the event actor
   (anonymous → `system`; a forged token is rejected 401).
 {% endif %}
@@ -100,4 +103,4 @@ this is only the starter skeleton — build features one reviewed slice per PR a
 
 ## ADRs governing the as-built system
 
-0001 (record ADRs) · 0002 (defense-in-depth against malicious code) · 0003 (monorepo layout & backend skeleton) · 0004 (agent-resistant guardrails) · 0005 (trunk-based branching) · 0006 (engineering process & control system) · 0007 (agent permission model) · 0008 (experience-to-control loop).
+0001 (record ADRs) · 0002 (defense-in-depth against malicious code) · 0003 (monorepo layout & backend skeleton) · 0004 (agent-resistant guardrails) · 0005 (trunk-based branching) · 0006 (engineering process & control system) · 0007 (agent permission model) · 0008 (experience-to-control loop) · 0009 (standards suite) · 0010 (release evidence chain){% if include_compliance_spine %} · 0011 (client-reported events){% endif %}.

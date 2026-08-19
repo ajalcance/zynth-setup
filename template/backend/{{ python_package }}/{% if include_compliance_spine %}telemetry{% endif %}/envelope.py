@@ -15,6 +15,15 @@ SEV_CRITICAL = "critical"
 ACTOR_SYSTEM = "system"
 ACTOR_HUMAN = "human"
 
+# WHO OBSERVED THE FACT — the trust axis, distinct from WHO ACTED (the actor).
+#
+# `server` means this service observed it directly. `client` means a browser or app REPORTED it:
+# the actor is authenticated and the timestamp and IP are ours, but the claim itself is only as
+# honest as the code that sent it. That distinction cannot be recovered later from the fields, so
+# it is recorded at emission. `command.audit.seal_new` refuses to seal anything but `server`.
+SOURCE_SERVER = "server"
+SOURCE_CLIENT = "client"
+
 
 def make_event(
     *,
@@ -30,6 +39,7 @@ def make_event(
     resource_id: str | None = None,
     ip: str | None = None,
     correlation_id: str | None = None,
+    source: str = SOURCE_SERVER,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a schema-v1 envelope dict (JSON-ready)."""
@@ -46,6 +56,7 @@ def make_event(
         "resource": {"type": resource_type, "id": resource_id},
         "correlation_id": correlation_id,
         "ip": ip,
+        "source": source,
         "metadata": metadata or {},
     }
 

@@ -47,6 +47,9 @@ def _to_row(ev: dict[str, Any]) -> dict[str, Any]:
         "resource_id": resource.get("id"),
         "correlation_id": ev.get("correlation_id"),
         "ip": ev.get("ip"),
+        # Only this service writes to the stream, so an absent source is a server-emitted event
+        # from before the field existed. A client never reaches Redis directly.
+        "source": ev.get("source") or "server",
         "metadata_": ev.get("metadata") or {},
     }
 

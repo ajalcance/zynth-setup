@@ -40,6 +40,19 @@ DEFAULT_RULES: tuple[Rule, ...] = (
         severity="critical",
     ),
     Rule(
+        id="client-error-surge",
+        title="Client error surge",
+        description=(
+            "A spike in browser-reported errors. Low trust individually — a client can say "
+            "anything — but a sudden rise is a real signal that a release broke something, and "
+            "it is one of the few failures a server-side log cannot see at all."
+        ),
+        actions=("client.error",),
+        threshold=25,
+        window_seconds=300,
+        severity="warn",
+    ),
+    Rule(
         id="failure-surge",
         title="System-wide failure surge",
         description="Unusual volume of failed/denied outcomes across the whole system.",
@@ -55,6 +68,7 @@ DEFAULT_RULES: tuple[Rule, ...] = (
 BASELINE_ONLY: frozenset[str] = frozenset(
     {
         "example.viewed",  # benign read; volume anomalies → the surge catch-all
+        "client.route_view",  # navigation telemetry; volume only, no per-event meaning
     }
 )
 

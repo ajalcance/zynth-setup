@@ -117,4 +117,25 @@ If an action cannot be reconstructed afterwards, an incident has no answer to "w
 who did it". Every consequential action needs an explicit emit / detection / audit / compliance
 decision — including the deliberate decision that it needs none.
 """
+
+[[pattern]]
+id = "EXP-0010"
+title = "Trusting a claim because the record holding it is tamper-evident"
+enforcement = "guard"
+enforced_by = [
+  "backend/{{ python_package }}/command/audit.py",
+  "backend/tests/spine/test_coverage_guards.py",
+]
+paths = [
+  "backend/{{ python_package }}/api/**",
+  "backend/{{ python_package }}/telemetry/**",
+  "backend/{{ python_package }}/command/**",
+]
+guidance = """
+A hash chain proves nothing was altered afterwards. It says nothing about whether the entry was
+true when written. Anything a client supplied is a claim, so accepting an actor, timestamp or
+severity from a request body and sealing it produces a cryptographically verified falsehood.
+Record WHO OBSERVED a fact (`source`) alongside who acted, take attribution from the verified
+request, and keep client-reported events out of the chain and out of the compliance map.
+"""
 {% endif -%}

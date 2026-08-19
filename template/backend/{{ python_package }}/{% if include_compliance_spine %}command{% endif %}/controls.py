@@ -37,8 +37,15 @@ ACTION_CONTROLS: dict[str, tuple[str, ...]] = {
     "example.viewed": ("SOC2_CC7.2", "ISO27001_A8.16"),
 }
 
-# Actions deliberately NOT compliance evidence (routine, low-value reads).
-CONTROL_EXEMPT: frozenset[str] = frozenset()
+# Actions deliberately NOT compliance evidence (routine reads, and anything a client reported).
+# A client-sourced event cannot be evidence for a control: an auditor asking "prove this happened"
+# needs an observation, and this is a claim. Useful operationally, worthless as attestation.
+CONTROL_EXEMPT: frozenset[str] = frozenset(
+    {
+        "client.error",
+        "client.route_view",
+    }
+)
 
 
 def controls_for(action: str) -> list[str]:

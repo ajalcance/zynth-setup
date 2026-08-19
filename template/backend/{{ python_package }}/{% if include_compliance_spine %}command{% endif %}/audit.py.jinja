@@ -20,6 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from {{ python_package }}.command.controls import controls_for
 from {{ python_package }}.command.models import AuditLog, Event
 
+# The chain records what THIS SERVICE observed. A client-reported event is evidence that a browser
+# said something, not that it happened — sealing one would give a claim the same cryptographic
+# standing as an observation, which is the failure mode a tamper-evident log is supposed to close.
+# Enforced here at runtime AND statically in tests/spine/test_coverage_guards.py, because a
+# registry mistake and a code mistake are different mistakes.
+SEALABLE_SOURCE = "server"
+
 GENESIS_HASH = "0" * 64
 
 # Security-significant actions written to the tamper-evident log.
@@ -30,7 +37,13 @@ AUDITABLE_ACTIONS: frozenset[str] = frozenset(
 )
 
 # Explicitly NOT audited (high-volume, low-value reads). A deliberate, guarded decision.
-AUDIT_EXEMPT: frozenset[str] = frozenset()
+AUDIT_EXEMPT: frozenset[str] = frozenset(
+    {
+        # Client-reported. See SEALABLE_SOURCE above and docs/decisions/0011.
+        "client.error",
+        "client.route_view",
+    }
+)
 
 
 def _canonical_content(entry: AuditLog) -> str:
@@ -94,6 +107,7 @@ async def seal_new(session: AsyncSession, *, batch: int = 500) -> int:
                 select(Event)
                 .where(
                     Event.action.in_(AUDITABLE_ACTIONS),
+                    Event.source == SEALABLE_SOURCE,
                     ~exists().where(AuditLog.event_id == Event.event_id),
                 )
                 .order_by(Event.ts, Event.event_id)

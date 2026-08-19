@@ -39,6 +39,7 @@ Attempts to weaken a guard are themselves gated and reviewed. What each one prot
 | **release_evidence** (`scripts/release_evidence.py`) | a release record that names an image by mutable tag, or evidence belonging to a different release | record digests, and promote only the evidence for the tag being promoted |
 {% if include_deploy %}| **cosign verify** | deploying an unsigned / tampered image | build and sign through the release pipeline |
 {% endif %}{% if include_compliance_spine %}| **spine coverage guards** | an action that isn't recorded / monitored / audited | register the action for emit + detection + audit + compliance |
+| **client/server trust boundary** | sealing something a browser *claimed* into the tamper-evident chain, or taking the actor from a request body | keep client-reported actions in `AUDIT_EXEMPT`; attribution comes from the verified request, never the payload |
 {% endif %}
 > Anything that genuinely *should* change a guard is a **design decision** → propose it in an ADR
 > for human review, don't do it silently.
