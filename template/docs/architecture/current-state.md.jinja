@@ -27,7 +27,7 @@ backend/                    FastAPI backend (Python 3.12)
     telemetry/              event envelope, fail-open emitter, coverage registry
     command/                cold store (events) + hash-chained audit_log + detection/control catalogs
 {% endif %}  migrations/               Alembic (async env)
-  tests/                    pytest (in-memory SQLite) — health smoke tests
+  tests/                    pytest (in-memory SQLite) — health smoke + migration-fidelity tests
 {% if include_frontend %}frontend/                   Next.js app (security headers, error boundaries, bundle budget)
   frontend/app/             App Router routes + layout + error.tsx / global-error.tsx boundaries
   frontend/lib/             typed API client (retry/error contract)
@@ -54,6 +54,11 @@ docs/standards/             the full rule suite — stable ids, honest enforceme
 - **Guard fault tests** (`tests/guards/`): negative tests proving every guard can still fail, so a
   guard that silently stops working becomes a test failure rather than a green tick. Run by
   `make check` and the CI `static` job.
+- **Migration fidelity** (`backend/tests/test_migrations.py`): the backend suite creates tables
+  from the models, but production only ever runs `alembic upgrade head` — so the suite applies
+  the real migrations to an empty database, proves every revision reverses and re-applies, and
+  fails if the migrated schema differs from the models. A model change without a migration is
+  caught at PR time instead of at deploy time.
 - **Experience-to-control loop** (`experience/`): recurring lessons normalized onto a five-rung
   ladder (reference → context → checklist → guard → production blocker). `make risk-context`
   matches the current diff to the entries that apply; CI **fails** if an entry claims `guard`

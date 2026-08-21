@@ -1,0 +1,105 @@
+"""The migrations must build the schema the models describe.
+
+Every test in this suite creates its tables with ``Base.metadata.create_all``. Production never
+does that — it runs ``alembic upgrade head``. So the whole suite can be green against a schema
+that no deployment will ever have, and the first sign of the gap is a migrate container failing,
+or worse, succeeding against a table that is missing a column the code now writes to.
+
+This closes that gap in both directions:
+
+1. **The migrations apply at all.** ``upgrade head`` on an empty database, then ``downgrade
+   base`` and back up, so a revision that cannot be reversed or re-applied is caught here rather
+   than during an incident.
+2. **The result matches the models.** Alembic's own autogenerate comparison runs against the
+   migrated schema; any difference means a model changed without a migration, which is exactly
+   the mistake that is invisible until deploy.
+
+Runs on SQLite, like the rest of the suite. That proves structure — tables, columns, nullability,
+indexes — and per the standards it is **not** evidence about PostgreSQL-specific behaviour
+(constraint timing, row-level security, extension-backed types). A migration relying on any of
+those needs evidence from PostgreSQL itself.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.autogenerate import compare_metadata
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from sqlalchemy import create_engine
+
+from {{ python_package }}.db import models  # noqa: F401  (registers tables on Base.metadata)
+from {{ python_package }}.db.base import Base
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+# Alembic's comparison reports these against SQLite for reasons that are not schema drift:
+# it cannot introspect a server_default's exact rendering, and variant column types
+# (BigInteger→Integer on SQLite) come back as the variant rather than the declared type.
+IGNORED_DIFF_KINDS = frozenset({"modify_default", "modify_type"})
+
+
+def _alembic_config(database_path: Path) -> Config:
+    """Alembic wired to a throwaway database — never the developer's real one."""
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+    # env.py reads this override first; see its module docstring.
+    config.set_main_option("sqlalchemy.url", f"sqlite+aiosqlite:///{database_path}")
+    return config
+
+
+@pytest.fixture
+def migrated_db(tmp_path: Path) -> Path:
+    """An empty database with `alembic upgrade head` applied to it."""
+    database_path = tmp_path / "migrations.sqlite3"
+    command.upgrade(_alembic_config(database_path), "head")
+    return database_path
+
+
+def test_migrations_apply_to_an_empty_database(migrated_db: Path) -> None:
+    """The fixture does the work; this names the failure if `upgrade head` ever breaks."""
+    assert migrated_db.exists() and migrated_db.stat().st_size > 0
+
+
+def test_every_revision_can_be_reversed_and_reapplied(tmp_path: Path) -> None:
+    """A downgrade nobody has run is a downgrade that does not work."""
+    config = _alembic_config(tmp_path / "roundtrip.sqlite3")
+    command.upgrade(config, "head")
+    command.downgrade(config, "base")
+    command.upgrade(config, "head")
+
+
+def test_the_migrated_schema_matches_the_models(migrated_db: Path) -> None:
+    """A model changed without a migration is invisible until a deploy runs.
+
+    `create_all` in the test fixtures hides it completely: the suite passes against a schema
+    production will never have.
+    """
+    engine = create_engine(f"sqlite:///{migrated_db}")
+    try:
+        with engine.connect() as connection:
+            context = MigrationContext.configure(
+                connection, opts={"compare_type": True, "render_as_batch": True}
+            )
+            differences = [
+                diff
+                for diff in compare_metadata(context, Base.metadata)
+                if _kind(diff) not in IGNORED_DIFF_KINDS
+            ]
+    finally:
+        engine.dispose()
+
+    assert not differences, (
+        "the migrated schema does not match the models — add a migration for the model change "
+        f"(or fix the migration): {differences}"
+    )
+
+
+def _kind(diff: object) -> str:
+    """Alembic yields a tuple per difference, or a list of them for a single table."""
+    if isinstance(diff, list):
+        return _kind(diff[0]) if diff else ""
+    return str(diff[0]) if isinstance(diff, tuple) and diff else ""
