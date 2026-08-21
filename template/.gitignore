@@ -16,6 +16,12 @@ coverage.xml
 .env
 .env.*
 !.env.example
+# Inert in a generated project (no such file exists here) — this exception protects the
+# TEMPLATE repo that ships this .gitignore. Copier's dirty-repo flow clones with
+# --no-checkout and re-stages the worktree against an empty index, so these ignore rules
+# apply to the template's own tracked files; without the exception, `.env.*` silently
+# drops .env.example.jinja from every generation made from a locally modified template.
+!.env.example.jinja
 *.pem
 *.key
 

@@ -56,6 +56,27 @@ jobs:
         with:
           node-version: "22"
 
+      # A tracked template file matched by any ignore rule (including the generated project's
+      # own template/.gitignore, whose rules also apply inside THIS repo) is silently DELETED
+      # from generations made from a locally modified template: copier clones with
+      # --no-checkout and re-stages the worktree against an empty index, so ignore rules bind
+      # files that are normally tracked-and-immune. That is how `.env.*` swallowed
+      # .env.example.jinja for weeks of local verification while CI (clean checkout, no dirty
+      # path) stayed green. Un-ignore the file or rename it — never generate around it.
+      - name: No tracked file is matched by an ignore rule
+        run: |
+          # Non-verbose check-ignore lists only files that END UP ignored — a file rescued by
+          # a negation pattern (!...) is correctly absent. Verbose mode would list the negation
+          # match too and false-positive on exactly the files the fix un-ignores.
+          matched="$(git ls-files | git check-ignore --no-index --stdin || true)"
+          total="$(git ls-files | wc -l)"
+          if [ -n "$matched" ]; then
+            echo "::error title=Ignored-but-tracked::Tracked files matched by ignore rules — copier's dirty-repo flow will silently drop these from local generations:"
+            git ls-files | git check-ignore --no-index --stdin -v || true
+            exit 1
+          fi
+          echo "ignore-rule check: OK — none of the $total tracked files end up ignored."
+
       - name: Install Copier
         run: pipx install copier
 
