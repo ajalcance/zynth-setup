@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from {{ python_package }}.command.controls import controls_for
 from {{ python_package }}.command.models import AuditLog, Event
+from {{ python_package }}.telemetry.registry import CLIENT_ACTIONS
 
 # The chain records what THIS SERVICE observed. A client-reported event is evidence that a browser
 # said something, not that it happened — sealing one would give a claim the same cryptographic
@@ -36,14 +37,12 @@ AUDITABLE_ACTIONS: frozenset[str] = frozenset(
     }
 )
 
-# Explicitly NOT audited (high-volume, low-value reads). A deliberate, guarded decision.
-AUDIT_EXEMPT: frozenset[str] = frozenset(
-    {
-        # Client-reported. See SEALABLE_SOURCE above and docs/decisions/0011.
-        "client.error",
-        "client.route_view",
-    }
-)
+# Explicitly NOT audited. Two kinds live here: per-action judgement calls (high-volume,
+# low-value reads — add those by name), and EVERY client-reported action, included as a set
+# union because ADR-0011 makes that exemption invariant — a claim can never be evidence, so
+# per-action "decisions" that must always come out the same way would be ceremony, and hand
+# mirroring them here is the drift the guards would then have to police.
+AUDIT_EXEMPT: frozenset[str] = frozenset() | CLIENT_ACTIONS
 
 
 def _canonical_content(entry: AuditLog) -> str:

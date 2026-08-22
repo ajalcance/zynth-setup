@@ -2,23 +2,17 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
+from conftest import auth_headers, stream_events
 from fakeredis.aioredis import FakeRedis
 from httpx import AsyncClient
 
-from {{ python_package }}.auth.principal import issue_token
-from {{ python_package }}.config import get_settings
-
 
 async def _last_event(redis: FakeRedis) -> dict[str, Any]:
-    entries = await redis.xrange(get_settings().telemetry_stream)
-    assert entries, "no telemetry event was emitted"
-    fields = entries[-1][1]
-    assert fields is not None
-    payload: dict[str, Any] = json.loads(fields["e"])
-    return payload
+    events = await stream_events(redis)
+    assert events, "no telemetry event was emitted"
+    return events[-1]
 
 
 async def test_anonymous_request_actor_is_system(
@@ -33,8 +27,7 @@ async def test_anonymous_request_actor_is_system(
 async def test_authenticated_request_records_principal(
     client: AsyncClient, fake_redis: FakeRedis
 ) -> None:
-    token = issue_token("user-123", "sess-9")
-    resp = await client.get("/api/v1/example", headers={"Authorization": f"Bearer {token}"})
+    resp = await client.get("/api/v1/example", headers=auth_headers())
     assert resp.status_code == 200
     event = await _last_event(fake_redis)
     assert event["actor"] == {"type": "user", "id": "user-123", "sid": "sess-9"}

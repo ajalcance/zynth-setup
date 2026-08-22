@@ -14,32 +14,31 @@ This closes that gap in both directions:
    migrated schema; any difference means a model changed without a migration, which is exactly
    the mistake that is invisible until deploy.
 
-Runs on SQLite, like the rest of the suite. That proves structure — tables, columns, nullability,
-indexes — and per the standards it is **not** evidence about PostgreSQL-specific behaviour
-(constraint timing, row-level security, extension-backed types). A migration relying on any of
-those needs evidence from PostgreSQL itself.
+Scope, stated honestly (TA-015): this runs on SQLite, like the rest of the suite, and column
+TYPES are deliberately not compared — variant types (``BigInteger().with_variant(Integer,
+"sqlite")``) render differently on SQLite and would drown real findings in false ones. Structure
+(tables, columns, nullability, indexes, uniques) IS compared, per individual difference — never
+filtered by group, because alembic bundles several changes to one column into a single group and
+discarding a group for one benign member would discard the real drift beside it. A claim about
+PostgreSQL-specific behaviour still needs evidence from PostgreSQL itself.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 
 from {{ python_package }}.db import models  # noqa: F401  (registers tables on Base.metadata)
 from {{ python_package }}.db.base import Base
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-
-# Alembic's comparison reports these against SQLite for reasons that are not schema drift:
-# it cannot introspect a server_default's exact rendering, and variant column types
-# (BigInteger→Integer on SQLite) come back as the variant rather than the declared type.
-IGNORED_DIFF_KINDS = frozenset({"modify_default", "modify_type"})
 
 
 def _alembic_config(database_path: Path) -> Config:
@@ -49,6 +48,22 @@ def _alembic_config(database_path: Path) -> Config:
     # env.py reads this override first; see its module docstring.
     config.set_main_option("sqlalchemy.url", f"sqlite+aiosqlite:///{database_path}")
     return config
+
+
+def _flatten(differences: list[Any]) -> list[tuple[Any, ...]]:
+    """Alembic yields a tuple per difference, but bundles same-column modify_* ops into a list.
+
+    Filtering must happen on the flattened stream: classifying a bundle by its first member and
+    dropping the whole bundle would silently discard real drift (say, a nullability change)
+    that happens to share a column with a benign ignored difference.
+    """
+    flat: list[tuple[Any, ...]] = []
+    for diff in differences:
+        if isinstance(diff, list):
+            flat.extend(diff)
+        else:
+            flat.append(diff)
+    return flat
 
 
 @pytest.fixture
@@ -76,19 +91,16 @@ def test_the_migrated_schema_matches_the_models(migrated_db: Path) -> None:
     """A model changed without a migration is invisible until a deploy runs.
 
     `create_all` in the test fixtures hides it completely: the suite passes against a schema
-    production will never have.
+    production will never have. Types are not compared (see the module docstring); every other
+    difference — per individual difference, never per group — fails the test.
     """
     engine = create_engine(f"sqlite:///{migrated_db}")
     try:
         with engine.connect() as connection:
             context = MigrationContext.configure(
-                connection, opts={"compare_type": True, "render_as_batch": True}
+                connection, opts={"compare_type": False, "render_as_batch": True}
             )
-            differences = [
-                diff
-                for diff in compare_metadata(context, Base.metadata)
-                if _kind(diff) not in IGNORED_DIFF_KINDS
-            ]
+            differences = _flatten(compare_metadata(context, Base.metadata))
     finally:
         engine.dispose()
 
@@ -98,8 +110,27 @@ def test_the_migrated_schema_matches_the_models(migrated_db: Path) -> None:
     )
 
 
-def _kind(diff: object) -> str:
-    """Alembic yields a tuple per difference, or a list of them for a single table."""
-    if isinstance(diff, list):
-        return _kind(diff[0]) if diff else ""
-    return str(diff[0]) if isinstance(diff, tuple) and diff else ""
+def test_the_db_level_source_default_matches_the_constant(migrated_db: Path) -> None:
+    """The migration's server_default must be the same value the code treats as trusted.
+
+    Three of the four homes of this value are drift-guarded (model default, SEALABLE_SOURCE,
+    consumer backfill — each pinned to SOURCE_SERVER by a test); this pins the fourth, the
+    default applied INSIDE the database. If it drifted, rows created outside the ORM would get
+    a value the audit sealer's source filter silently excludes — an unsealed-audit gap with no
+    other signal. Skips when the spine (and so the events table) is not part of this project.
+    """
+    envelope = pytest.importorskip(
+        "{{ python_package }}.telemetry.envelope",
+        reason="the compliance spine is not enabled in this project",
+    )
+    engine = create_engine(f"sqlite:///{migrated_db}")
+    try:
+        columns = {c["name"]: c for c in inspect(engine).get_columns("events")}
+    finally:
+        engine.dispose()
+    db_default = str(columns["source"]["default"]).strip("'\"")
+    assert db_default == envelope.SOURCE_SERVER, (
+        f"events.source DB default is {db_default!r} but the code trusts "
+        f"{envelope.SOURCE_SERVER!r} — rows created outside the ORM would silently escape the "
+        f"audit sealer"
+    )

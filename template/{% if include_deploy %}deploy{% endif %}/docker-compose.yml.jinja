@@ -36,6 +36,13 @@ services:
     image: ${BACKEND_IMAGE:?set BACKEND_IMAGE to the signed image ref — see README.md}
     restart: unless-stopped
     env_file: ../.env
+{%- if include_compliance_spine %}
+    environment:
+      # In THIS stack Caddy always fronts the backend, so the proxy-appended X-Forwarded-For
+      # hop is trustworthy. Set here (topology knowledge), not in .env (which also serves
+      # proxy-less local runs, where the switch must stay off). See config.py.
+      TRUST_X_FORWARDED_FOR: "true"
+{%- endif %}
     read_only: true
     tmpfs:
       - /tmp

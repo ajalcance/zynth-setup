@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+from conftest import stream_events
 from fakeredis.aioredis import FakeRedis
 from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from {{ python_package }}.auth.principal import Principal
 from {{ python_package }}.command.audit import AUDITABLE_ACTIONS, seal_new, verify_chain
-from {{ python_package }}.command.consumer import consume_once
+from {{ python_package }}.command.consumer import _to_row, consume_once
 from {{ python_package }}.command.models import Event
-from {{ python_package }}.telemetry.emitter import emit
-from {{ python_package }}.telemetry.envelope import SOURCE_CLIENT, make_event
+from {{ python_package }}.telemetry.emitter import Telemetry, emit
+from {{ python_package }}.telemetry.envelope import SOURCE_CLIENT, SOURCE_SERVER, make_event
 
 
 async def test_ingest_seal_and_verify(fake_redis: FakeRedis, session: AsyncSession) -> None:
@@ -79,3 +81,59 @@ async def test_a_server_observed_event_with_the_same_action_is_sealed(
     await emit(fake_redis, make_event(category="x", action=auditable, outcome="success"))
     await consume_once(fake_redis, session)
     assert await seal_new(session) == 1
+
+
+async def test_the_emitter_overwrites_attribution_on_client_sourced_events(
+    fake_redis: FakeRedis,
+) -> None:
+    """For source=client the emitter enforces attribution itself (ADR-0011).
+
+    The route is careful to pass no actor fields, but the guarantee must not depend on every
+    future call site remembering that — a spoofed actor on a client-sourced event is overwritten
+    with the verified principal, not merely defaulted.
+    """
+    principal = Principal(type="user", id="user-123", sid="sess-9")
+    tel = Telemetry(fake_redis, ip="198.51.100.7", principal=principal)
+    await tel.emit(
+        category="client",
+        action="client.error",
+        outcome="success",
+        source=SOURCE_CLIENT,
+        actor_type="system",
+        actor_id="root",
+        sid="someone-else",
+        ip="10.0.0.1",
+    )
+    (event,) = await stream_events(fake_redis)
+    assert event["actor"] == {"type": "user", "id": "user-123", "sid": "sess-9"}
+    assert event["ip"] == "198.51.100.7"
+
+
+async def test_the_emitter_still_honors_explicit_actor_on_server_events(
+    fake_redis: FakeRedis,
+) -> None:
+    """The other direction: a server-observed emit (a worker acting for a user) may name the
+    actor explicitly — only client-sourced events lose that ability."""
+    tel = Telemetry(fake_redis, ip=None, principal=Principal(type="system"))
+    await tel.emit(
+        category="jobs", action="example.viewed", outcome="success", actor_id="batch-runner"
+    )
+    (event,) = await stream_events(fake_redis)
+    assert event["actor"]["id"] == "batch-runner"
+    assert event["source"] == SOURCE_SERVER
+
+
+def test_consumer_backfills_absent_source_but_never_upgrades_unknown_values() -> None:
+    """Absent source = a pre-field event from this service (only the server writes the stream):
+    backfilling it as server-observed is correct. A PRESENT unknown value is kept verbatim, so
+    the sealer's source filter excludes it — fail-closed for the chain, never `or`-coerced into
+    trusted "server"."""
+    base = make_event(category="x", action="example.viewed", outcome="success")
+    absent = dict(base)
+    del absent["source"]
+    assert _to_row(absent)["source"] == SOURCE_SERVER
+
+    garbage = dict(make_event(category="x", action="example.viewed", outcome="success"))
+    garbage["event_id"] = "f" * 32
+    garbage["source"] = ""
+    assert _to_row(garbage)["source"] == "", "an empty-string source must not become trusted"

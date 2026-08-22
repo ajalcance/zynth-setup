@@ -8,10 +8,20 @@ from typing import Any
 
 from fastapi import Request
 
+from {{ python_package }}.config import get_settings
+
+# Envelope schema version. The policy is ADDITIVE-OPEN: new OPTIONAL fields (like `source`,
+# added after v1 shipped) do not bump this, and every consumer must tolerate fields it does not
+# know. Bump it only for a breaking change — a field removed, renamed, or given new semantics —
+# and then the consumer must handle both versions explicitly. A bump-per-addition policy sounds
+# stricter but in practice teaches consumers to ignore the version field entirely.
 SCHEMA_V = 1
 SEV_INFO = "info"
 SEV_WARN = "warn"
 SEV_CRITICAL = "critical"
+# Weakest first. Detection rules compare against this, so "is severity X at least Y" has one
+# definition rather than one per call site.
+SEVERITY_ORDER: tuple[str, ...] = (SEV_INFO, SEV_WARN, SEV_CRITICAL)
 ACTOR_SYSTEM = "system"
 ACTOR_HUMAN = "human"
 
@@ -62,8 +72,19 @@ def make_event(
 
 
 def client_ip(request: Request) -> str | None:
-    """Best-effort client IP: first X-Forwarded-For hop, else peer."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """The request's client IP, resistant to header forgery.
+
+    ``X-Forwarded-For`` is an ordinary request header — any caller can send one, so trusting it
+    unconditionally lets an authenticated client choose the IP recorded on its own events, on a
+    field this module documents as server-observed. It is honored only when
+    ``trust_x_forwarded_for`` is enabled (set it exactly when a trusted reverse proxy — the
+    deploy module's Caddy — fronts this service), and then the **last** hop is used: the one
+    hop appended by our own proxy. Earlier hops are whatever the client claimed.
+
+    Without a trusted proxy the peer address is the only value the server itself observed.
+    """
+    if get_settings().trust_x_forwarded_for:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.rsplit(",", 1)[-1].strip()
     return request.client.host if request.client else None

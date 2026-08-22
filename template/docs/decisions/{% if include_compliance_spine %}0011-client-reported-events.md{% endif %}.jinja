@@ -53,11 +53,23 @@ Client-reported events are then contained by construction:
 what it saw, never who saw it**:
 
 - authentication is required, and anonymous is rejected rather than recorded as `system`;
-- actor, session, IP, timestamp and event id come from the request, never the body;
+- actor, session, IP, timestamp and event id come from the request, never the body — and the
+  emitter itself enforces this for any `source=client` event, so the guarantee does not depend
+  on call-site discipline;
+- unknown body fields are **rejected**, not silently dropped: on a trust boundary, a dropped
+  field looks identical to an accepted one from the caller's side;
 - the action must be on an allowlist;
-- severity is capped below `critical`;
-- metadata is flat and bounded in key count and value length;
-- a per-session rate cap bounds a runaway client.
+- severity is capped below `critical`, and **outcome defaults to `success`** — `failure` is
+  freely claimable, so the system-wide failure-surge detection rule excludes client actions
+  outright (client errors have their own surge rule);
+- the recorded IP honors `X-Forwarded-For` only behind a trusted reverse proxy
+  (`trust_x_forwarded_for`, enabled by the deploy stack, which knows Caddy fronts the service),
+  and then only the hop the proxy appended — otherwise the peer address is the only IP the
+  server itself observed;
+- metadata is flat and bounded: key count and key length are rejected at the model (keys are
+  never truncated — truncation silently merges distinct keys), values are truncated;
+- a per-session rate cap bounds a runaway client, and it re-attaches its TTL on every request
+  so a lost EXPIRE cannot leave a session rate-limited forever.
 
 ## Rationale
 

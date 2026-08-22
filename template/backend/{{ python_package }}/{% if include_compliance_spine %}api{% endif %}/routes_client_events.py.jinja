@@ -10,15 +10,20 @@ So the endpoint is built around one rule — **the client supplies what it saw, 
 - **Authentication is required.** Anonymous is rejected outright rather than recorded as
   ``system``; an event nobody can be asked about is not worth the row it occupies.
 - **Actor, session, IP, timestamp and event id are taken from the request**, never from the body.
-  A caller cannot attribute its report to someone else.
+  The emitter itself enforces this for client-sourced events (see ``telemetry.emitter``), and the
+  request model rejects unknown fields outright — a smuggled ``actor_id`` is a 422, not a silent
+  no-op a caller could mistake for success.
 - **The action must be on the allowlist.** Free-form actions would let a client mint event types
   that detection rules and compliance maps have never seen.
-- **Severity is capped below ``critical``.** Severity drives alerting, so a caller that can
-  declare its own report critical can page whoever is on call, from a laptop, at will.
+- **Severity is capped below ``critical`` and outcome defaults to ``success``.** Severity drives
+  alerting and ``failure`` outcomes feed the failure-surge detection rule — both are declared as
+  closed ``Literal`` sets so the model, the validation, and the docs cannot drift apart, and the
+  server-failure surge rule excludes client actions entirely (see ``command.rules``).
 - **``source`` is stamped ``client``**, which is what keeps these events out of the audit chain
   (``command.audit.SEALABLE_SOURCE``) and out of the compliance map.
-- **Metadata is bounded** in key count and value length, and flat: a durable store is the wrong
-  place to discover that someone posted a megabyte of nested JSON.
+- **Metadata is bounded and flat**, and the bounds live on the model: too many keys or an
+  over-long key is a 422 at parse time. Only *values* are truncated (a stack trace is legitimately
+  long); keys are never truncated, because truncation silently merges distinct keys.
 
 Retention, not immutability, is the containment strategy here — these rows expire with the
 ordinary events window, and they can never reach the chain, which is the part that is never purged.
@@ -26,10 +31,10 @@ ordinary events window, and they can never reach the chain, which is the part th
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from redis.asyncio import Redis
 
 from {{ python_package }}.auth import Principal, require_user
@@ -39,12 +44,8 @@ from {{ python_package }}.telemetry.registry import CLIENT_ACTIONS
 
 router = APIRouter(prefix="/api/v1", tags=["client-events"])
 
-# Severities a client may claim. `critical` is deliberately absent: it drives alerting, and a
-# caller able to declare its own report critical can page the on-call rota from a browser tab.
-ALLOWED_SEVERITIES = ("info", "warn")
-ALLOWED_OUTCOMES = ("success", "failure")
-
 MAX_METADATA_KEYS = 12
+MAX_KEY_LENGTH = 64
 MAX_VALUE_LENGTH = 512
 
 # Reports accepted per authenticated session per window. Deliberately generous: this exists to
@@ -56,35 +57,65 @@ RATE_WINDOW_SECONDS = 60
 
 
 class ClientEvent(BaseModel):
-    """What a client is allowed to tell us. Everything else is decided server-side."""
+    """What a client is allowed to tell us. Everything else is decided server-side.
+
+    ``extra="forbid"``: on a trust boundary, an unknown field is a caller error (or an
+    attribution attempt) and must fail loudly — silently dropping a typo'd ``severty`` would
+    file the report at the default level and nobody would ever know.
+
+    ``severity`` deliberately excludes ``critical``: severity drives alerting, and a caller able
+    to declare its own report critical can page the on-call rota from a browser tab. ``outcome``
+    defaults to ``success``: most client reports (a route view, a measurement) have no failure
+    semantics, and a default of ``failure`` would let sheer traffic volume feed failure-based
+    detection rules.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     action: str = Field(description="one of the allowlisted client actions")
-    outcome: str = Field(default="failure", description="success | failure")
-    severity: str = Field(default="info", description="info | warn")
+    outcome: Literal["success", "failure"] = "success"
+    severity: Literal["info", "warn"] = "info"
     metadata: dict[str, str] = Field(
-        default_factory=dict, description="flat string map; bounded in size"
+        default_factory=dict, description="flat string map; bounded keys, truncated values"
     )
+
+    @field_validator("metadata")
+    @classmethod
+    def _bound_metadata(cls, metadata: dict[str, str]) -> dict[str, str]:
+        """Reject oversize key sets and over-long keys; truncate only values.
+
+        Keys are never truncated: two distinct keys sharing a prefix would silently merge into
+        one, dropping a value with no signal to anyone. Values are truncated because a stack
+        trace is legitimately long and losing its tail is an acceptable, visible trade.
+        """
+        if len(metadata) > MAX_METADATA_KEYS:
+            raise ValueError(f"metadata may carry at most {MAX_METADATA_KEYS} keys")
+        for key in metadata:
+            if len(key) > MAX_KEY_LENGTH:
+                raise ValueError(
+                    f"metadata key {key[:MAX_KEY_LENGTH]!r}… exceeds {MAX_KEY_LENGTH} characters"
+                )
+        return {key: value[:MAX_VALUE_LENGTH] for key, value in metadata.items()}
 
 
 async def _within_rate_limit(redis: Redis, principal: Principal) -> bool:
-    """Per-session counter with a TTL. Fail-open — see RATE_LIMIT above for why that is safe."""
-    key = f"client-events:rate:{principal.id}:{principal.sid}"
+    """Per-session counter with a TTL. Fail-open — see RATE_LIMIT above for why that is safe.
+
+    The TTL is (re)attached with ``nx=True`` on **every** call, not only when the counter is
+    new: if the EXPIRE after the first INCR is lost (Redis blip, process death between the two
+    commands), a once-only scheme leaves an immortal key whose count never resets — the
+    deliberately fail-open limiter would become permanently fail-closed for that session.
+
+    The key joins id and sid with NUL, which cannot appear in either — a printable delimiter
+    like ':' would let ("org:alice", "s1") and ("org", "alice:s1") share one counter.
+    """
+    key = f"client-events:rate:{principal.id}\x00{principal.sid}"
     try:
         count = await redis.incr(key)
-        if count == 1:
-            await redis.expire(key, RATE_WINDOW_SECONDS)
+        await redis.expire(key, RATE_WINDOW_SECONDS, nx=True)
         return int(count) <= RATE_LIMIT
     except Exception:  # noqa: BLE001 — an unreachable Redis is not a reason to reject a request
         return True
-
-
-def _clean_metadata(metadata: dict[str, str]) -> dict[str, str]:
-    if len(metadata) > MAX_METADATA_KEYS:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            f"metadata may carry at most {MAX_METADATA_KEYS} keys",
-        )
-    return {str(key)[:64]: str(value)[:MAX_VALUE_LENGTH] for key, value in metadata.items()}
 
 
 @router.post("/client-events", status_code=status.HTTP_202_ACCEPTED)
@@ -100,31 +131,21 @@ async def report_client_event(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"unknown client action '{event.action}' — allowed: {sorted(CLIENT_ACTIONS)}",
         )
-    if event.severity not in ALLOWED_SEVERITIES:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            f"severity must be one of {list(ALLOWED_SEVERITIES)}",
-        )
-    if event.outcome not in ALLOWED_OUTCOMES:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            f"outcome must be one of {list(ALLOWED_OUTCOMES)}",
-        )
     if not await _within_rate_limit(redis, principal):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"more than {RATE_LIMIT} client events in {RATE_WINDOW_SECONDS}s for this session",
         )
 
-    # actor_type / actor_id / sid / ip are NOT passed: the emitter binds them from the verified
-    # request, and passing them here is exactly how a caller would attribute a report to someone
-    # else. `source` is the field that keeps this out of the audit chain.
+    # Attribution (actor, session, IP) is not passed here and could not be smuggled anyway:
+    # for source=SOURCE_CLIENT the emitter overwrites those fields from the verified request,
+    # so the guarantee holds even for a future call site that forgets this comment.
     await tel.emit(
         category="client",
         action=event.action,
         outcome=event.outcome,
         severity=event.severity,
         source=SOURCE_CLIENT,
-        metadata=_clean_metadata(event.metadata),
+        metadata=event.metadata,
     )
     return {"accepted": True}

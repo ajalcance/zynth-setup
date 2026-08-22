@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from {{ python_package }}.command.models import Event
 from {{ python_package }}.config import get_settings
+from {{ python_package }}.telemetry.envelope import SOURCE_SERVER
 
 
 def _uuid_or_none(value: Any) -> uuid.UUID | None:
@@ -47,9 +48,12 @@ def _to_row(ev: dict[str, Any]) -> dict[str, Any]:
         "resource_id": resource.get("id"),
         "correlation_id": ev.get("correlation_id"),
         "ip": ev.get("ip"),
-        # Only this service writes to the stream, so an absent source is a server-emitted event
-        # from before the field existed. A client never reaches Redis directly.
-        "source": ev.get("source") or "server",
+        # Only this service writes to the stream, so an ABSENT source is a server-emitted
+        # event enqueued before the field existed — backfilling those as server-observed is
+        # correct, and the migration backfills stored rows the same way. A PRESENT-but-unknown
+        # value is different: it is kept verbatim, so the sealer's source filter excludes it
+        # (fail-closed for the chain) instead of `or`-coercing garbage into trusted "server".
+        "source": SOURCE_SERVER if ev.get("source") is None else ev["source"],
         "metadata_": ev.get("metadata") or {},
     }
 

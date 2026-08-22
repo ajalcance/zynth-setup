@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..telemetry.registry import CLIENT_ACTIONS
+
 
 @dataclass(frozen=True, slots=True)
 class Control:
@@ -37,15 +39,11 @@ ACTION_CONTROLS: dict[str, tuple[str, ...]] = {
     "example.viewed": ("SOC2_CC7.2", "ISO27001_A8.16"),
 }
 
-# Actions deliberately NOT compliance evidence (routine reads, and anything a client reported).
-# A client-sourced event cannot be evidence for a control: an auditor asking "prove this happened"
-# needs an observation, and this is a claim. Useful operationally, worthless as attestation.
-CONTROL_EXEMPT: frozenset[str] = frozenset(
-    {
-        "client.error",
-        "client.route_view",
-    }
-)
+# Actions deliberately NOT compliance evidence. Per-action judgement calls (routine reads) are
+# added by name; every client-reported action is included by set union, because ADR-0011 makes
+# that exemption invariant — an auditor asking "prove this happened" needs an observation, and
+# a client report is a claim. Useful operationally, worthless as attestation.
+CONTROL_EXEMPT: frozenset[str] = frozenset() | CLIENT_ACTIONS
 
 
 def controls_for(action: str) -> list[str]:

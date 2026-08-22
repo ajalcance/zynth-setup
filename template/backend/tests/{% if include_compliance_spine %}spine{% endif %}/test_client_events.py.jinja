@@ -1,34 +1,26 @@
 """A client may report what it saw. It may not report who saw it.
 
 Everything in the request body was written by code on someone else's machine. These tests pin
-the boundary: the fields that decide *attribution* — actor, session, IP, timestamp, and the
-trust marker that keeps the event out of the audit chain — come from the request, and a body
-that tries to supply them is ignored rather than merged.
+the boundary: the fields that decide *attribution* — actor, session, IP, and the trust marker
+that keeps the event out of the audit chain — come from the request, and a body that tries to
+supply them is **rejected**, not silently ignored: on a trust boundary, a dropped field looks
+identical to an accepted one from the caller's side, so unknown fields must fail loudly.
 """
 
 from __future__ import annotations
 
-import json
-from typing import Any
+from typing import get_args
 
+import pytest
+from conftest import auth_headers, stream_events
 from fakeredis.aioredis import FakeRedis
 from httpx import AsyncClient
 
-from {{ python_package }}.api.routes_client_events import RATE_LIMIT
-from {{ python_package }}.auth.principal import issue_token
-from {{ python_package }}.config import get_settings
+from {{ python_package }}.api import routes_client_events
+from {{ python_package }}.api.routes_client_events import ClientEvent
+from {{ python_package }}.telemetry.envelope import SEV_INFO, SEV_WARN
 
 ENDPOINT = "/api/v1/client-events"
-
-
-def _auth(sub: str = "user-123", sid: str = "sess-9") -> dict[str, str]:
-    return {"Authorization": f"Bearer {issue_token(sub, sid)}"}
-
-
-async def _events(redis: FakeRedis) -> list[dict[str, Any]]:
-    """Everything currently on the telemetry stream, oldest first."""
-    entries = await redis.xrange(get_settings().telemetry_stream) or []
-    return [json.loads(fields["e"]) for _, fields in entries if fields]
 
 
 # --- Authentication ---------------------------------------------------------------------------
@@ -38,16 +30,11 @@ async def test_anonymous_report_is_rejected(client: AsyncClient, fake_redis: Fak
     """Recorded as `system` would mean an event nobody can be asked about."""
     resp = await client.post(ENDPOINT, json={"action": "client.error"})
     assert resp.status_code == 401
-    assert await _events(fake_redis) == [], "nothing may be stored for a rejected report"
+    assert await stream_events(fake_redis) == [], "nothing may be stored for a rejected report"
 
 
-async def test_forged_token_is_rejected(client: AsyncClient) -> None:
-    resp = await client.post(
-        ENDPOINT,
-        json={"action": "client.error"},
-        headers={"Authorization": "Bearer user-123.sess-9.deadbeef"},
-    )
-    assert resp.status_code == 401
+# (Forged/malformed token rejection is pinned once, in test_auth.py — require_user wraps the
+# same get_principal path, and the anonymous-rejection test above covers what it adds.)
 
 
 # --- Attribution is the server's, not the client's ---------------------------------------------
@@ -59,39 +46,53 @@ async def test_report_is_attributed_to_the_authenticated_caller(
     resp = await client.post(
         ENDPOINT,
         json={"action": "client.error", "metadata": {"message": "boom"}},
-        headers=_auth(),
+        headers=auth_headers(),
     )
     assert resp.status_code == 202
-    (event,) = await _events(fake_redis)
+    (event,) = await stream_events(fake_redis)
     assert event["actor"] == {"type": "user", "id": "user-123", "sid": "sess-9"}
     assert event["source"] == "client"
+    assert event["outcome"] == "success", "a report with no failure semantics defaults to success"
     assert event["metadata"]["message"] == "boom"
 
 
-async def test_a_body_cannot_attribute_the_report_to_someone_else(
+async def test_a_body_supplying_attribution_fields_is_rejected(
     client: AsyncClient, fake_redis: FakeRedis
 ) -> None:
-    """The whole point of the endpoint. A caller must not be able to impersonate."""
+    """extra="forbid": a smuggled actor field is a 422, never a silent no-op.
+
+    Silently dropping the field would look identical to accepting it from the caller's side —
+    an attribution attempt (or an SDK bug) must be told apart from success.
+    """
     resp = await client.post(
         ENDPOINT,
-        json={
-            "action": "client.error",
-            "actor_type": "system",
-            "actor_id": "root",
-            "sid": "someone-elses-session",
-            "ip": "10.0.0.1",
-            "source": "server",
-            "category": "auth",
-        },
-        headers=_auth(),
+        json={"action": "client.error", "actor_id": "root", "source": "server"},
+        headers=auth_headers(),
+    )
+    assert resp.status_code == 422
+    assert await stream_events(fake_redis) == [], "a rejected report must store nothing"
+
+
+async def test_a_typoed_field_is_rejected_not_defaulted(client: AsyncClient) -> None:
+    """{"severty": "warn"} must not silently file the report at severity=info."""
+    resp = await client.post(
+        ENDPOINT, json={"action": "client.error", "severty": "warn"}, headers=auth_headers()
+    )
+    assert resp.status_code == 422
+
+
+async def test_a_spoofed_forwarded_header_does_not_set_the_recorded_ip(
+    client: AsyncClient, fake_redis: FakeRedis
+) -> None:
+    """X-Forwarded-For is a plain request header; without a trusted proxy it is ignored."""
+    resp = await client.post(
+        ENDPOINT,
+        json={"action": "client.error"},
+        headers={**auth_headers(), "X-Forwarded-For": "10.0.0.1"},
     )
     assert resp.status_code == 202
-    (event,) = await _events(fake_redis)
-    assert event["actor"]["id"] == "user-123", "actor came from the body, not the token"
-    assert event["actor"]["sid"] == "sess-9", "session came from the body"
-    assert event["source"] == "client", "a client talked its way out of the client source marker"
-    assert event["category"] == "client", "category came from the body"
-    assert event["ip"] != "10.0.0.1", "IP came from the body"
+    (event,) = await stream_events(fake_redis)
+    assert event["ip"] != "10.0.0.1", "the recorded IP must be the peer, not the claimed header"
 
 
 # --- What a client is allowed to say ------------------------------------------------------------
@@ -99,9 +100,11 @@ async def test_a_body_cannot_attribute_the_report_to_someone_else(
 
 async def test_an_unlisted_action_is_rejected(client: AsyncClient, fake_redis: FakeRedis) -> None:
     """Free-form actions would mint event types no detection rule has ever seen."""
-    resp = await client.post(ENDPOINT, json={"action": "admin.deleted_everything"}, headers=_auth())
+    resp = await client.post(
+        ENDPOINT, json={"action": "admin.deleted_everything"}, headers=auth_headers()
+    )
     assert resp.status_code == 422
-    assert await _events(fake_redis) == []
+    assert await stream_events(fake_redis) == []
 
 
 async def test_a_client_cannot_declare_its_report_critical(
@@ -109,27 +112,51 @@ async def test_a_client_cannot_declare_its_report_critical(
 ) -> None:
     """Severity drives alerting — otherwise a browser tab can page the on-call rota."""
     resp = await client.post(
-        ENDPOINT, json={"action": "client.error", "severity": "critical"}, headers=_auth()
+        ENDPOINT, json={"action": "client.error", "severity": "critical"}, headers=auth_headers()
     )
     assert resp.status_code == 422
-    assert await _events(fake_redis) == []
+    assert await stream_events(fake_redis) == []
 
 
 async def test_an_unknown_outcome_is_rejected(client: AsyncClient) -> None:
     resp = await client.post(
-        ENDPOINT, json={"action": "client.error", "outcome": "maybe"}, headers=_auth()
+        ENDPOINT, json={"action": "client.error", "outcome": "maybe"}, headers=auth_headers()
     )
     assert resp.status_code == 422
+
+
+def test_the_severity_literal_matches_the_envelope_vocabulary() -> None:
+    """The model's closed set must be the envelope's constants, minus critical — by value.
+
+    Literal[] cannot reference the constants, so this pins the two vocabularies together;
+    renaming a severity in envelope.py fails here instead of silently desynchronizing the route.
+    """
+    allowed = set(get_args(ClientEvent.model_fields["severity"].annotation))
+    assert allowed == {SEV_INFO, SEV_WARN}
 
 
 async def test_metadata_key_count_is_bounded(client: AsyncClient, fake_redis: FakeRedis) -> None:
     resp = await client.post(
         ENDPOINT,
         json={"action": "client.error", "metadata": {f"k{i}": "v" for i in range(50)}},
-        headers=_auth(),
+        headers=auth_headers(),
     )
     assert resp.status_code == 422
-    assert await _events(fake_redis) == []
+    assert await stream_events(fake_redis) == []
+
+
+async def test_an_overlong_metadata_key_is_rejected_not_truncated(
+    client: AsyncClient, fake_redis: FakeRedis
+) -> None:
+    """Truncating keys would silently merge two distinct keys and drop one value."""
+    long_a = "breadcrumb_" + "x" * 60 + "_A"
+    resp = await client.post(
+        ENDPOINT,
+        json={"action": "client.error", "metadata": {long_a: "v1"}},
+        headers=auth_headers(),
+    )
+    assert resp.status_code == 422
+    assert await stream_events(fake_redis) == []
 
 
 async def test_metadata_values_are_truncated(client: AsyncClient, fake_redis: FakeRedis) -> None:
@@ -137,10 +164,10 @@ async def test_metadata_values_are_truncated(client: AsyncClient, fake_redis: Fa
     resp = await client.post(
         ENDPOINT,
         json={"action": "client.error", "metadata": {"stack": "x" * 10_000}},
-        headers=_auth(),
+        headers=auth_headers(),
     )
     assert resp.status_code == 202
-    (event,) = await _events(fake_redis)
+    (event,) = await stream_events(fake_redis)
     assert len(event["metadata"]["stack"]) <= 512
 
 
@@ -148,7 +175,7 @@ async def test_nested_metadata_is_rejected(client: AsyncClient) -> None:
     resp = await client.post(
         ENDPOINT,
         json={"action": "client.error", "metadata": {"ctx": {"nested": "object"}}},
-        headers=_auth(),
+        headers=auth_headers(),
     )
     assert resp.status_code == 422
 
@@ -156,21 +183,55 @@ async def test_nested_metadata_is_rejected(client: AsyncClient) -> None:
 # --- Volume ------------------------------------------------------------------------------------
 
 
-async def test_a_runaway_client_is_capped(client: AsyncClient, fake_redis: FakeRedis) -> None:
+@pytest.fixture
+def small_rate_limit(monkeypatch: pytest.MonkeyPatch) -> int:
+    """Cap the limiter at 3 for these tests.
+
+    The boundary (Nth accepted, N+1th refused, other sessions unaffected) is identical at any
+    limit; driving the real 120-request constant through the full stack proves nothing more and
+    makes suite time scale with a production tuning knob.
+    """
+    limit = 3
+    monkeypatch.setattr(routes_client_events, "RATE_LIMIT", limit)
+    return limit
+
+
+async def test_a_runaway_client_is_capped(
+    client: AsyncClient, fake_redis: FakeRedis, small_rate_limit: int
+) -> None:
     """A retry loop in a released frontend is the realistic flood, not an attacker."""
-    for _ in range(RATE_LIMIT):
-        resp = await client.post(ENDPOINT, json={"action": "client.error"}, headers=_auth())
+    headers = auth_headers()
+    for _ in range(small_rate_limit):
+        resp = await client.post(ENDPOINT, json={"action": "client.error"}, headers=headers)
         assert resp.status_code == 202
-    resp = await client.post(ENDPOINT, json={"action": "client.error"}, headers=_auth())
+    resp = await client.post(ENDPOINT, json={"action": "client.error"}, headers=headers)
     assert resp.status_code == 429
-    assert len(await _events(fake_redis)) == RATE_LIMIT
+    assert len(await stream_events(fake_redis)) == small_rate_limit
 
 
-async def test_the_cap_is_per_session(client: AsyncClient) -> None:
+async def test_the_cap_is_per_session(client: AsyncClient, small_rate_limit: int) -> None:
     """One noisy session must not silence everyone else's reports."""
-    for _ in range(RATE_LIMIT):
-        await client.post(ENDPOINT, json={"action": "client.error"}, headers=_auth())
+    headers = auth_headers()
+    for _ in range(small_rate_limit + 1):
+        await client.post(ENDPOINT, json={"action": "client.error"}, headers=headers)
     other = await client.post(
-        ENDPOINT, json={"action": "client.error"}, headers=_auth("user-999", "sess-other")
+        ENDPOINT, json={"action": "client.error"}, headers=auth_headers("user-999", "sess-other")
     )
     assert other.status_code == 202
+
+
+async def test_a_lost_ttl_is_reattached_instead_of_becoming_permanent(
+    client: AsyncClient, fake_redis: FakeRedis, small_rate_limit: int
+) -> None:
+    """A counter key that lost its EXPIRE must not rate-limit the session forever.
+
+    Simulates the partial failure (INCR applied, EXPIRE lost — a Redis blip or a crash between
+    the two): the key exists with no TTL and its count is already past 1, so a scheme that only
+    sets the TTL on count == 1 would never attach one again.
+    """
+    key = "client-events:rate:user-123\x00sess-9"
+    await fake_redis.set(key, 1)  # count already past the first increment; no TTL
+    assert await fake_redis.ttl(key) == -1, "precondition: the key is immortal"
+    resp = await client.post(ENDPOINT, json={"action": "client.error"}, headers=auth_headers())
+    assert resp.status_code == 202
+    assert await fake_redis.ttl(key) > 0, "the request must re-attach the missing TTL"

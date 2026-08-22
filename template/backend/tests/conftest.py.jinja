@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-
+{% if include_compliance_spine %}import json
+{% endif %}from collections.abc import AsyncGenerator
+{% if include_compliance_spine %}from typing import Any
+{% endif %}
 import pytest_asyncio
 {% if include_compliance_spine -%}
 from fakeredis.aioredis import FakeRedis
@@ -55,6 +57,25 @@ async def fake_redis() -> AsyncGenerator[FakeRedis, None]:
     redis = FakeRedis(decode_responses=True)
     yield redis
     await redis.aclose()
+
+
+async def stream_events(redis: FakeRedis) -> list[dict[str, Any]]:
+    """Every envelope currently on the telemetry stream, oldest first.
+
+    The one place the telemetry wire format (stream setting, the 'e' field, JSON payload) is
+    encoded in the test suite — a change to the emitter's encoding is fixed here, once.
+    """
+    from {{ python_package }}.config import get_settings
+
+    entries = await redis.xrange(get_settings().telemetry_stream) or []
+    return [json.loads(fields["e"]) for _, fields in entries if fields]
+
+
+def auth_headers(sub: str = "user-123", sid: str = "sess-9") -> dict[str, str]:
+    """A valid bearer header for the given subject/session."""
+    from {{ python_package }}.auth.principal import issue_token
+
+    return {"Authorization": f"Bearer {issue_token(sub, sid)}"}
 
 
 {% endif -%}

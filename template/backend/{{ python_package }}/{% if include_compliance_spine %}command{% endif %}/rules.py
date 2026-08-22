@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..telemetry.registry import CLIENT_ACTIONS
+
 
 @dataclass(frozen=True, slots=True)
 class Rule:
@@ -24,6 +26,7 @@ class Rule:
     window_seconds: int
     severity: str
     actions: tuple[str, ...] = ()  # empty = any action (catch-all)
+    exclude_actions: tuple[str, ...] = ()  # carved out of a catch-all; ignored when actions is set
     outcomes: tuple[str, ...] = ()  # empty = any outcome
     min_severity: str | None = None
 
@@ -55,8 +58,15 @@ DEFAULT_RULES: tuple[Rule, ...] = (
     Rule(
         id="failure-surge",
         title="System-wide failure surge",
-        description="Unusual volume of failed/denied outcomes across the whole system.",
+        description=(
+            "Unusual volume of failed/denied outcomes across the whole system. Client-reported "
+            "actions are excluded: a client may freely claim outcome=failure, so counting them "
+            "here would let one browser tab hold this alert high at will — the same "
+            "alert-forcing capability the client severity cap exists to prevent. Client errors "
+            "have their own rule (client-error-surge)."
+        ),
         outcomes=("failure", "denied"),
+        exclude_actions=tuple(sorted(CLIENT_ACTIONS)),
         threshold=30,
         window_seconds=300,
         severity="warn",

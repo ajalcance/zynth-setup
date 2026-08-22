@@ -15,7 +15,7 @@ from redis.asyncio import Redis
 from {{ python_package }}.auth import ANONYMOUS, Principal, get_principal
 from {{ python_package }}.cache.redis import get_redis
 from {{ python_package }}.config import get_settings
-from {{ python_package }}.telemetry.envelope import client_ip, make_event
+from {{ python_package }}.telemetry.envelope import SOURCE_CLIENT, client_ip, make_event
 
 
 async def emit(redis: Redis, event: dict[str, Any]) -> None:
@@ -45,13 +45,24 @@ class Telemetry:
     async def emit(self, **kwargs: Any) -> None:
         """Build an envelope (``make_event`` fields) and emit it, fail-open.
 
-        The acting principal (from the request's bearer token, else anonymous) is recorded as the
-        event actor unless the caller overrides it.
+        The acting principal (from the request's bearer token, else anonymous) is recorded as
+        the event actor unless the caller overrides it — EXCEPT for client-sourced events.
+        For ``source=SOURCE_CLIENT`` the attribution fields are **overwritten** from the
+        verified request, never merely defaulted: a client-reported event whose actor came from
+        anywhere but the verified principal is exactly the falsehood ADR-0011 exists to prevent,
+        and enforcing it here means every call site gets the guarantee, not just the ones that
+        remember the rule.
         """
-        kwargs.setdefault("ip", self._ip)
-        kwargs.setdefault("actor_type", self._principal.type)
-        kwargs.setdefault("actor_id", self._principal.id)
-        kwargs.setdefault("sid", self._principal.sid)
+        if kwargs.get("source") == SOURCE_CLIENT:
+            kwargs["actor_type"] = self._principal.type
+            kwargs["actor_id"] = self._principal.id
+            kwargs["sid"] = self._principal.sid
+            kwargs["ip"] = self._ip
+        else:
+            kwargs.setdefault("ip", self._ip)
+            kwargs.setdefault("actor_type", self._principal.type)
+            kwargs.setdefault("actor_id", self._principal.id)
+            kwargs.setdefault("sid", self._principal.sid)
         await emit(self._redis, make_event(**kwargs))
 
 

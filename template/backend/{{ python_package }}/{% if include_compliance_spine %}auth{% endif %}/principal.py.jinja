@@ -15,7 +15,7 @@ import hashlib
 import hmac
 from dataclasses import dataclass
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 
 from {{ python_package }}.config import get_settings
 
@@ -70,14 +70,18 @@ def get_principal(request: Request) -> Principal:
     return principal
 
 
-def require_user(request: Request) -> Principal:
+def require_user(principal: Principal = Depends(get_principal)) -> Principal:
     """Like ``get_principal``, but anonymous is rejected rather than allowed through.
 
     ``get_principal`` is right for a public route that merely wants to name the actor when there
     is one. Any route that WRITES on the caller's behalf needs this instead: an event attributed
     to ``system`` because nobody was signed in is an event nobody can be asked about.
+
+    Declared as ``Depends(get_principal)`` rather than calling it, so FastAPI's per-request
+    dependency cache resolves the principal ONCE even when another dependency on the same route
+    (``get_telemetry``) also needs it — otherwise the token is verified twice per request, which
+    becomes two IdP or session-store lookups once ``_verify`` is replaced with a real one.
     """
-    principal = get_principal(request)
     if principal.type != ACTOR_USER:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "authentication required")
     return principal

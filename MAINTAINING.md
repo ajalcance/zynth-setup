@@ -41,6 +41,19 @@ cd /tmp/gen-demo/backend && python -m venv .venv && . .venv/bin/activate \
 Try variants too: a different `--data python_package=svc`, `--data license=MIT`, and the optional
 toggles once their payloads exist.
 
+**Before generating from a locally modified tree, run:**
+
+```bash
+./scripts/check-tracked-ignores.sh
+```
+
+Copier's dirty-repo flow re-stages the worktree against an empty index, so a tracked file
+matched by any ignore rule (including `template/.gitignore`, whose rules also apply inside this
+repo) is silently missing from every local generation — while CI, which generates from a clean
+checkout, stays green. This script is the same check CI runs (`template-test.yml`); it caught
+`.env.example.jinja` being dropped for weeks. If it fails, un-ignore or rename the file — never
+generate around it.
+
 ## Add a new prompt
 
 Add the question to `copier.yml`, then use it in the relevant `.jinja` files. Keep sensible

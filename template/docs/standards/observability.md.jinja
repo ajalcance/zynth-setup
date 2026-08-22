@@ -40,7 +40,7 @@ names what enforces a rule, and is empty when nothing does.
 | OBS-031 | A client-reported event never enters the audit chain. The chain records what this service observed; sealing a claim gives it the standing of an observation, permanently. | `[CI]` | `backend/{{ python_package }}/command/audit.py` |
 | OBS-032 | A client-reported event is never compliance evidence. An auditor asking "prove this happened" needs an observation, not a claim. | `[CI]` | `backend/tests/spine/test_coverage_guards.py` |
 | OBS-033 | A route that writes on the caller's behalf requires an authenticated principal. An event attributed to `system` because nobody was signed in is an event nobody can be asked about. | `[Review]` | — |
-| OBS-034 | A client supplies **what it saw, never who saw it**. Actor, session, IP and timestamp come from the request; a body that offers them is ignored, not merged. | `[CI]` | `backend/tests/spine/test_client_events.py` |
+| OBS-034 | A client supplies **what it saw, never who saw it**. Actor, session, IP and timestamp come from the request; a body that offers them is rejected outright, and the emitter overwrites attribution on any client-sourced event regardless of caller. | `[CI]` | `backend/tests/spine/test_client_events.py` |
 | OBS-035 | A client may not declare its own report `critical`. Severity drives alerting, so that is the ability to page the on-call rota from a browser tab. | `[CI]` | `backend/tests/spine/test_client_events.py` |
 | OBS-036 | Client-reported data is contained by **retention**, not immutability — it expires with the events window and never reaches the record that is never purged. | `[Review]` | — |
 {%- endif %}
