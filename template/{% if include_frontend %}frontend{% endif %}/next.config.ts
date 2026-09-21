@@ -52,6 +52,19 @@ const securityHeaders = [
   },
 ];
 
+/**
+ * Build engine: this app builds with WEBPACK, pinned in package.json (`next build --webpack`),
+ * not with Next 16's default Turbopack.
+ *
+ * The reason is the container image. `frontend/Dockerfile` runs `npm run build`, and CI builds
+ * that image for linux/arm64 under QEMU emulation. A Turbopack build wedged there — 33 minutes
+ * against a 3-minute baseline, with no timeout to stop it — while being perfectly fast natively.
+ * Pinning the engine in package.json rather than in the Dockerfile is deliberate: the gate and
+ * the image then run the SAME command, so the thing tested is the thing that ships. Splitting
+ * them is how a build passes the gate and fails in the registry.
+ *
+ * docs-site keeps the default: it has no Dockerfile, so it never builds under emulation.
+ */
 const nextConfig: NextConfig = {
   poweredByHeader: false, // don't advertise the framework/version
   async headers() {

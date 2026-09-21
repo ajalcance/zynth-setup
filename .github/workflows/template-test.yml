@@ -21,6 +21,19 @@ permissions:
 jobs:
   generate-and-gate:
     runs-on: ubuntu-latest
+    # This exists because it did not. A Turbopack build wedged under QEMU emulation and burned
+    # 38 minutes before anyone looked, with nothing to stop it short of GitHub's six-hour
+    # default. The template demands a timeout on every job
+    # (tests/guards/test_workflow_invariants.py); the maintainer's own workflow has to hold the
+    # same line, or the rule is advice rather than a rule.
+    #
+    # 40 minutes is the OUTER bound, deliberately generous: the two image-build steps carry
+    # their own tighter timeouts below, so a wedge is caught there and fails with a message
+    # naming the step, rather than killing the job and losing what every other step found.
+    # A healthy full run is ~11 minutes; an emulated webpack build of the frontend measured
+    # ~8 minutes locally and GitHub's runners are slower, so the job bound has to clear that
+    # comfortably or it becomes a false failure — and a gate that cries wolf gets ignored.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -234,12 +247,18 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Backend image builds on amd64 + arm64
         if: matrix.name == 'full' && github.event_name != 'pull_request'
+        # Measured baselines: backend ~2m, frontend ~3m with webpack (and ~8m emulated on a
+        # fast laptop). A build past this bound is wedged, not slow — say so by name.
+        timeout-minutes: 15
         working-directory: /tmp/gen
         run: |
           docker buildx build --platform linux/amd64,linux/arm64 \
             --output type=cacheonly backend
       - name: Frontend image builds on amd64 + arm64
         if: matrix.name == 'full' && github.event_name != 'pull_request'
+        # Measured baselines: backend ~2m, frontend ~3m with webpack (and ~8m emulated on a
+        # fast laptop). A build past this bound is wedged, not slow — say so by name.
+        timeout-minutes: 20
         working-directory: /tmp/gen
         run: |
           docker buildx build --platform linux/amd64,linux/arm64 \

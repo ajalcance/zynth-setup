@@ -626,3 +626,41 @@ def test_the_harness_tool_versions_have_one_source():
             f"the harness tools must be constrained by the file that already pins them for "
             f"`make backend`, not pinned a second time: {line}"
         )
+
+
+# --- The image and the gate must build the same artifact --------------------------------
+
+FRONTEND_MANIFEST = REPO_ROOT / "frontend" / "package.json"
+FRONTEND_DOCKERFILE = REPO_ROOT / "frontend" / "Dockerfile"
+
+
+def test_the_image_builds_with_the_same_command_the_gate_runs():
+    """Splitting them means the gate tests one artifact and the registry gets another."""
+    if not FRONTEND_DOCKERFILE.is_file():
+        pytest.skip("the frontend module is not enabled in this project")
+    dockerfile = FRONTEND_DOCKERFILE.read_text()
+    assert "npm run build" in dockerfile, (
+        "the image must build through the package.json script, not a bare `next build` — "
+        "otherwise the engine, flags and environment can drift from what the gate ran"
+    )
+    build_flags = [
+        line for line in dockerfile.splitlines() if "next build" in line and "npm run" not in line
+    ]
+    assert not build_flags, f"the image bypasses the build script: {build_flags}"
+
+
+def test_the_imaged_app_pins_its_build_engine():
+    """Next 16 defaults to Turbopack, which wedged under QEMU arm64 emulation.
+
+    33 minutes against a 3-minute baseline, while being fast natively — so it is invisible
+    until the multi-arch image build, which only runs on a push to the default branch. The
+    engine is pinned in package.json so the gate and the image cannot disagree about it.
+    """
+    if not FRONTEND_MANIFEST.is_file():
+        pytest.skip("the frontend module is not enabled in this project")
+    build = json.loads(FRONTEND_MANIFEST.read_text())["scripts"]["build"]
+    assert "--webpack" in build or "--turbopack" in build, (
+        f"the imaged app's build script ({build!r}) does not pin a build engine, so it "
+        f"follows whatever Next defaults to next — and that default has already cost a "
+        f"38-minute hung job once"
+    )
