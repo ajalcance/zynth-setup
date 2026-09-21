@@ -41,7 +41,8 @@ experience/                 registry.toml — lessons normalized onto the enforc
 docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITECTURE / PLAN / LESSONS / decisions
 docs/standards/             the full rule suite — stable ids, honest enforcement markers
 .devcontainer/              sandboxed dev image + default-deny egress firewall
-{% if include_claude_hooks %}.claude/hooks/              local Claude Code hooks: auto-format + footgun/secret blockers (ergonomics)
+{% if include_claude_hooks %}.claude/hooks/              local Claude Code hooks: auto-format · footgun + secret blockers · confine_to_project.py (no change leaves the project) · approved_scope.py (approval per unit of work)
+.claude/approved-scope.json  owner-approved scopes; ships empty, so every core path prompts
 {% endif %}```
 
 ## What's implemented

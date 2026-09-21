@@ -50,6 +50,47 @@ Additionally `permissions.disableBypassPermissionsMode: "disable"`, and
 - **`.claude/settings.local.json` is ignored** so a machine-local override can never become
   necessary to the team workflow, nor a quiet way to weaken the shared policy.
 
+## Amendment (v3): the hook does the asking
+
+Two things learned since, both from a project running this model at scale.
+
+**Globs cannot confine an agent.** Precedence is deny → ask → allow and the patterns are
+globs, so "everything except this folder" is not expressible: any deny broad enough to protect
+the rest of the machine also blocks the project. The dangerous-command hook named `/`, `~` and
+`$HOME`, which left every sibling project directory fair game — and changing directory first
+issues no single token that looks dangerous. `.claude/hooks/confine_to_project.py` resolves
+`~`, `..`, and any `cd` in the same command line *before* deciding. Only changes are confined;
+reading elsewhere is how an assistant learns from another project.
+
+**A hook's `allow` loses to a static `ask`.** This is the expensive one. A scope mechanism that
+returned `allow` correctly, verified by hand with a hundred passing assertions, waived nothing
+for a whole day because a static `ask` rule outranked it — while an ADR and two other documents
+described it as live. Its tests ran the hook directly and asserted its verdict; nothing
+exercised the path from a real tool call, through the permission system, to a silent edit. A
+control tested at the point it is easiest to test rather than the point it has to hold.
+
+So the design is inverted. For the core paths a scope may cover there is **no static `ask` rule
+at all**, and `.claude/hooks/approved_scope.py` returns `ask` unless an active scope covers the
+path. Its failure direction is inverted from every other hook here: it is the only thing asking
+about those paths, so every error must become `ask`.
+
+**Approval moves to the unit of work.** Per-file prompts are right for an unplanned edit to a
+guard and wrong for an approved programme: six agents once produced roughly 1,500 prompts for
+work the owner had already approved, and approving a thousand prompts is not approving
+anything. A scope names the work, cites the decision it serves, gives a reason, lists its paths
+and expires. It is stricter than what it replaces — written down and citable, narrower than a
+blanket rule, self-lapsing, unable to touch `.claude/`, and unable to reach a system-altering
+path except by naming it.
+
+**Choose the failure direction before writing the control.** Every way of being sloppy with a
+scope produces *more* asking. A permission mechanism whose bugs produce more asking is one you
+can afford to be wrong about.
+
+**Prompts that are always approved are not controls.** Most prompts came from the unlisted, not
+the dangerous — file utilities, the venv's own tools, `npx`. Clicking through each one trains
+reflexive approval and destroys the signal on the prompts that matter. The rule now: allow what
+the gates govern, ask for the core, and deny the never-acceptable so it needs no click either.
+
 ## Consequences
 
 - Routine work stops prompting, so a prompt becomes informative again — it means *authority*.

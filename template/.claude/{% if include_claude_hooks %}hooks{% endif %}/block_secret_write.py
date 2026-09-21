@@ -6,7 +6,7 @@ Mirrors the pre-commit ``detect-private-key`` / gitleaks gate and the repo
 private key from ever being written, so it cannot be staged by accident. Only
 ``.env.example`` (placeholders) is allowed.
 
-Contract: reads the PreToolUse JSON envelope on stdin (Write tool). Exit 2 blocks
+Contract: reads the PreToolUse JSON envelope on stdin (every write tool). Exit 2 blocks
 and feeds stderr back to the model; exit 0 allows. Fails **open** on internal error.
 """
 
@@ -48,7 +48,20 @@ def main() -> int:
     if not isinstance(file_path, str) or not file_path:
         return 0
 
-    reason = _reason(file_path, tin.get("content") or "")
+    # Every field that can carry NEW bytes, across every write tool. Registering this hook
+    # for Edit while reading only `content` would be worse than not registering it: it would
+    # run, inspect nothing, and report clean. `new_string` is Edit, `edits` is MultiEdit,
+    # `new_source` is NotebookEdit.
+    written: list[str] = []
+    for key in ("content", "new_string", "new_source"):
+        value = tin.get(key)
+        if isinstance(value, str):
+            written.append(value)
+    for edit in tin.get("edits") or []:
+        if isinstance(edit, dict) and isinstance(edit.get("new_string"), str):
+            written.append(edit["new_string"])
+
+    reason = _reason(file_path, "\n".join(written))
     if reason:
         sys.stderr.write(
             "BLOCKED by .claude/hooks/block_secret_write.py — " + reason + "\n"

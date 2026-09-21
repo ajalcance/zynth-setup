@@ -9,60 +9,24 @@
       "Read(./**/*.pem)",
       "Read(./**/*.key)",
       "Read(./**/id_rsa)",
-      "Read(./**/id_ed25519)"
+      "Read(./**/id_ed25519)",
+      "Bash(git push --force*)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(sudo *)",
+      "Bash(curl * | *)",
+      "Bash(wget * | *)",
+      "Bash(npm publish *)",
+      "Bash(gh secret *)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git config core.hooksPath*)"
     ],
     "ask": [
       "Edit(./.claude/**)",
       "Write(./.claude/**)",
       "MultiEdit(./.claude/**)",
       "NotebookEdit(./.claude/**)",
-      "Edit(./.github/**)",
-      "Write(./.github/**)",
-      "MultiEdit(./.github/**)",
-      "NotebookEdit(./.github/**)",
-      "Edit(./scripts/**)",
-      "Write(./scripts/**)",
-      "MultiEdit(./scripts/**)",
-      "NotebookEdit(./scripts/**)",
-      "Edit(./tests/guards/**)",
-      "Write(./tests/guards/**)",
-      "MultiEdit(./tests/guards/**)",
-      "NotebookEdit(./tests/guards/**)",
-      "Edit(./.semgrep/**)",
-      "Write(./.semgrep/**)",
-      "MultiEdit(./.semgrep/**)",
-      "NotebookEdit(./.semgrep/**)",
-      "Edit(./.gitleaks.toml)",
-      "Write(./.gitleaks.toml)",
-      "MultiEdit(./.gitleaks.toml)",
-      "NotebookEdit(./.gitleaks.toml)",
-      "Edit(./.pre-commit-config.yaml)",
-      "Write(./.pre-commit-config.yaml)",
-      "MultiEdit(./.pre-commit-config.yaml)",
-      "NotebookEdit(./.pre-commit-config.yaml)",
-      "Edit(./Makefile)",
-      "Write(./Makefile)",
-      "MultiEdit(./Makefile)",
-      "NotebookEdit(./Makefile)",
-      "Edit(./CLAUDE.md)",
-      "Write(./CLAUDE.md)",
-      "MultiEdit(./CLAUDE.md)",
-      "NotebookEdit(./CLAUDE.md)",
-      "Edit(./AGENTS.md)",
-      "Write(./AGENTS.md)",
-      "MultiEdit(./AGENTS.md)",
-      "NotebookEdit(./AGENTS.md)",
-      "Edit(./deploy/**)",
-      "Write(./deploy/**)",
-      "MultiEdit(./deploy/**)",
-      "NotebookEdit(./deploy/**)",
-      "Edit(./docs/decisions/**)",
-      "Write(./docs/decisions/**)",
-      "MultiEdit(./docs/decisions/**)",
-      "NotebookEdit(./docs/decisions/**)",
       "Bash(git tag *)",
       "Bash(git push --tags*)",
-      "Bash(git push --force*)",
       "Bash(git reset --hard*)",
       "Bash(git clean *)",
       "Bash(git rebase *)",
@@ -70,19 +34,15 @@
       "Bash(gh release *)",
       "Bash(gh pr merge *)",
       "Bash(gh repo *)",
-      "Bash(gh secret *)",
       "Bash(gh ruleset *)",
       "Bash(gh api -X *)",
       "Bash(gh api --method *)",
       "Bash(gh workflow run *)",
       "Bash(docker *)",
-      "Bash(sudo *)",
       "Bash(ssh *)",
       "Bash(scp *)",
-      "Bash(curl * | *)",
       "Bash(pip install *)",
-      "Bash(npm install *)",
-      "Bash(npm publish *)"
+      "Bash(npm install *)"
     ],
     "allow": [
       "Bash(make *)",
@@ -115,7 +75,37 @@
       "Bash(gh pr list*)",
       "Bash(gh run view*)",
       "Bash(gh run list*)",
-      "Bash(gh run watch*)"
+      "Bash(gh run watch*)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(diff *)",
+      "Bash(sed -n *)",
+      "Bash(awk *)",
+      "Bash(basename *)",
+      "Bash(dirname *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(touch *)",
+      "Bash(echo *)",
+      "Bash(backend/.venv/bin/* *)",
+      "Bash(npx eslint *)",
+      "Bash(npx next *)",
+      "Bash(npx playwright *)",
+      "Bash(pre-commit run*)",
+      "Bash(actionlint*)",
+      "Bash(shellcheck *)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh api repos/*)"
     ],
     "disableBypassPermissionsMode": "disable"
   },
@@ -127,15 +117,28 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_dangerous_bash.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/confine_to_project.py\""
           }
         ]
       },
       {
-        "matcher": "Write",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_secret_write.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/approved_scope.py\""
           }
         ]
       }

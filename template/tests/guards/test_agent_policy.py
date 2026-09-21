@@ -58,23 +58,48 @@ def test_env_example_stays_readable():
     )
 
 
-def test_policy_and_guard_files_require_confirmation():
+def test_the_agents_own_authority_stays_statically_gated():
+    """`.claude/` keeps STATIC rules and no hook may waive them.
+
+    Everything else that needs a human moved to .claude/hooks/approved_scope.py — a static
+    `ask` there would outrank the hook's `allow` and the scope would waive nothing (see
+    tests/guards/test_approved_scope.py). This one path is the deliberate exception:
+    widening the agent's own authority must not depend on the agent's code being correct.
+    """
     ask = " ".join(_permissions()["ask"])
-    for path in (
-        "./.claude/**",
-        "./.github/**",
-        "./scripts/**",
-        "./CLAUDE.md",
-        "./docs/decisions/**",
+    assert (
+        "Edit(./.claude/**)" in ask
+    ), "the permission policy and the hooks must prompt through a static rule, not a hook"
+
+
+def test_the_paths_that_need_a_human_are_gated_somewhere():
+    """Statically or by the scope hook — but never by neither.
+
+    The reconciliation between the two lives in
+    tests/guards/test_protected_path_reconciliation.py, which checks both against a
+    population written out by hand rather than against each other.
+    """
+    ask = " ".join(_permissions()["ask"])
+    hook = REPO_ROOT / ".claude" / "hooks" / "approved_scope.py"
+    core = hook.read_text() if hook.is_file() else ""
+    for path, pattern in (
+        ("./.github/**", ".github/**"),
+        ("./scripts/**", "scripts/**"),
+        ("./CLAUDE.md", "CLAUDE.md"),
+        ("./docs/decisions/**", "docs/decisions/**"),
     ):
-        assert f"Edit({path})" in ask, f"edits to {path} must prompt — the agent gates itself"
+        assert (
+            f"Edit({path})" in ask or f'"{pattern}"' in core
+        ), f"{path} is gated by neither a static rule nor the scope hook"
 
 
 def test_every_protected_path_is_protected_against_every_write_tool():
     """A rule written for Edit only does not stop a Write, and Write overwrites the file whole.
 
     Trivially exploitable, trivially fixed, and exactly the kind of thing a template should
-    get right once for everyone.
+    get right once for everyone. Only the statically-gated paths are checked here; the scope
+    hook matches on the tool NAME, so it cannot have this gap by construction — and
+    test_approved_scope.py asserts it is registered for all four.
     """
     ask = _permissions()["ask"]
     paths = {rule[len("Edit(") : -1] for rule in ask if rule.startswith("Edit(")}
@@ -95,14 +120,19 @@ def test_an_adr_cannot_be_written_without_a_prompt():
     """ADRs outrank docs/PLAN.md in the source-of-truth order (CLAUDE.md §0).
 
     A broad `docs/**` allowance waived the prompt, leaving the one record that outranks the
-    roadmap the only one an agent could write with nobody in the loop.
+    roadmap the only one an agent could write with nobody in the loop. The prompt now comes
+    from the scope hook, which sees every write tool at once — so this asserts the path is
+    claimed there rather than listing four static rules.
     """
-    ask = _permissions()["ask"]
-    for tool in WRITE_TOOLS:
-        assert f"{tool}(./docs/decisions/**)" in ask, (
-            f"a {tool} to an ADR must prompt: a decision record an agent writes unreviewed "
-            f"silently overrules the roadmap"
-        )
+    hook = REPO_ROOT / ".claude" / "hooks" / "approved_scope.py"
+    if not hook.is_file():
+        ask = _permissions()["ask"]
+        for tool in WRITE_TOOLS:
+            assert f"{tool}(./docs/decisions/**)" in ask
+        return
+    assert (
+        '"docs/decisions/**"' in hook.read_text()
+    ), "an ADR an agent writes unreviewed silently overrules the roadmap"
 
 
 def test_settings_gate_edits_to_themselves():
@@ -114,10 +144,29 @@ def test_bypass_permissions_mode_is_disabled():
     assert _permissions().get("disableBypassPermissionsMode") == "disable"
 
 
-def test_release_and_destructive_actions_ask():
-    ask = " ".join(_permissions()["ask"])
+def test_release_and_destructive_actions_are_never_silent():
+    """Each must prompt or be refused outright — deny is the stronger of the two, not a gap."""
+    permissions = _permissions()
+    gated = " ".join(permissions["ask"] + permissions["deny"])
     for rule in ("git tag", "git push --force", "rm -rf", "gh release", "sudo", "docker"):
-        assert rule in ask, f"'{rule}' changes state beyond the working tree — it must prompt"
+        assert (
+            rule in gated
+        ), f"'{rule}' changes state beyond the working tree — it must not be silent"
+
+
+def test_the_never_acceptable_is_denied_rather_than_asked():
+    """A prompt that is always declined is not a control; it is a click that trains reflex.
+
+    Most prompts came from the unlisted, not the dangerous, and clicking through each one
+    destroys the signal on the prompts that matter. Where there is no acceptable answer,
+    there is no reason to spend a click.
+    """
+    deny = " ".join(_permissions()["deny"])
+    for rule in ("git push --force", "sudo", "npm publish", "gh secret", "--no-verify"):
+        assert rule in deny, (
+            f"'{rule}' has no acceptable answer, so it must be denied outright rather than "
+            f"left to a prompt somebody will eventually approve by reflex"
+        )
 
 
 def test_routine_work_does_not_prompt():
@@ -205,6 +254,64 @@ def test_a_private_key_in_the_content_is_blocked_whatever_the_filename():
 def test_ordinary_writes_are_not_blocked(path):
     """The positive control. .env.example is the file the README tells adopters to copy."""
     assert _write_verdict(path) == 0, f"{path} must not be blocked"
+
+
+@secret_hook
+def test_a_private_key_inserted_by_an_edit_is_blocked():
+    """Registered for Write only, this hook never saw an Edit — and an Edit inserts bytes too.
+
+    Extending the matcher without reading Edit's own field would be worse than leaving it:
+    the hook would run, inspect nothing, and report clean.
+    """
+    body = "-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----\n"
+    payload = json.dumps(
+        {"tool_name": "Edit", "tool_input": {"file_path": "/repo/notes.txt", "new_string": body}}
+    )
+    result = subprocess.run(
+        [sys.executable, str(SECRET_HOOK)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 2, "an Edit carrying a private key must be blocked"
+
+
+@secret_hook
+def test_a_private_key_inserted_by_a_multiedit_is_blocked():
+    body = "-----BEGIN EC PRIVATE KEY-----\nAAAA\n-----END EC PRIVATE KEY-----\n"
+    payload = json.dumps(
+        {
+            "tool_name": "MultiEdit",
+            "tool_input": {
+                "file_path": "/repo/notes.txt",
+                "edits": [{"old_string": "x", "new_string": body}],
+            },
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, str(SECRET_HOOK)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 2, "a MultiEdit carrying a private key must be blocked"
+
+
+@secret_hook
+def test_the_secret_hook_sees_every_write_tool():
+    """A tool the matcher misses is an unguarded way in."""
+    settings = json.loads(SETTINGS.read_text())
+    matchers = [
+        entry.get("matcher", "")
+        for entry in settings["hooks"]["PreToolUse"]
+        if any("block_secret_write.py" in h.get("command", "") for h in entry.get("hooks", []))
+    ]
+    assert matchers, "the secret-write hook is registered for nothing"
+    joined = "|".join(matchers)
+    for tool in WRITE_TOOLS:
+        assert tool in joined, f"the secret-write hook does not see {tool}"
 
 
 @secret_hook

@@ -126,6 +126,10 @@ uvicorn {{ python_package }}.main:app --reload
 - **Conventional Commits:** `type(scope): summary` — types: `feat`, `fix`, `refactor`, `docs`,
   `test`, `chore`, `security`, `perf`.
 - Keep commits focused: one logical change each.
+- **Green on a pull request says nothing about green on `main`.** The pull-request run and the
+  push run take different paths through the same workflow. After a merge, look at the push
+  run — and evaluate a check rollup by completion time, because a superseded run leaves a
+  misleading entry beside the live one. See rule 18 in §8.
 
 ---
 
@@ -134,9 +138,48 @@ uvicorn {{ python_package }}.main:app --reload
 - Run `gitleaks detect` / pre-commit before pushing (hooks do this automatically).
 - Any security-relevant change → note it in [`docs/SECURITY.md`](docs/SECURITY.md) and tag the
   commit `security:`.
-{% if include_claude_hooks %}- **Local Claude Code hooks** (`.claude/settings.json`) auto-format backend Python and block footguns
-  (direct push to `main`, `--no-verify`, dangerous `rm -rf`) and secret writes. These are *ergonomics*
-  that shift the guards left — **CI and the branch ruleset are the real, fail-closed enforcement.**
+{% if include_claude_hooks %}- **Local Claude Code hooks** (`.claude/settings.json`) auto-format backend Python, block
+  footguns (direct push to `main`, `--no-verify`, dangerous `rm -rf`) and secret writes, and
+  confine every *change* to this project. Reading elsewhere is fine; changing anything outside
+  is not. These are *ergonomics* that shift the guards left — **CI and the branch ruleset are
+  the real, fail-closed enforcement.**
+
+### Permission precedence — read this before touching `.claude/`
+
+> **Precedence is `deny` → `ask` → `allow`. A hook's `allow` is one more allow, and it LOSES to
+> any static `ask` rule matching the same path.**
+
+That single fact cost a full day elsewhere: a scope hook returned `allow` correctly, was
+verified by hand, had a hundred passing assertions — and waived nothing for an entire day
+because a static `ask` rule outranked it, while three documents described it as live. So the
+design here is inverted: for the core paths a scope may cover there is **no static `ask` rule
+at all**, and `.claude/hooks/approved_scope.py` does the asking itself.
+
+Two consequences:
+
+- That hook **fails closed by asking**. It is the only thing prompting on those paths, so every
+  error in it must become `ask` — its blanket exception handler is required, not sloppy.
+- `.claude/settings.json`, `.claude/hooks/` and `.claude/approved-scope.json` keep their static
+  rules and the hook says nothing about them. Widening the agent's own authority must not
+  depend on the agent's code being correct.
+
+### Approval is per unit of work, not per keystroke
+
+[`.claude/approved-scope.json`](.claude/approved-scope.json) ships empty. A scope names the
+work, cites the decision it serves, gives a reason, lists its paths and expires — and the owner
+approves that one file, once. A scope that is malformed, uncited, unbounded or expired waives
+nothing. A broad pattern never reaches a system-altering area; those are covered only by a
+pattern that names them. A scope buys silence at the keystroke, **never at the gate**.
+
+### Working habits the hooks imply
+
+- The scope waives `Edit`/`Write`/`MultiEdit`/`NotebookEdit` only. `sed -i`, redirects and `tee`
+  go through Bash, which no scope covers — reaching for the shell to change a file turns an
+  approved, silent edit into a prompt. The answer is never to widen the allow list.
+- **One plain command per Bash call.** Pipes and `&&` defeat sub-command matching and prompt
+  even when each part is individually allowed.
+- Write records with the file tools, not through a shell heredoc. A hook that scans prose will
+  refuse prose: quoting a forbidden flag in a lessons entry looks exactly like using it.
 {% endif %}
 
 ---
@@ -146,3 +189,48 @@ uvicorn {{ python_package }}.main:app --reload
 - **Going long / getting complex?** Stop and split — new file, new module, new ADR.
 - **Unsure of a decision?** Write an ADR proposing it rather than deciding silently.
 - **Proactively recommend the professional approach** even if not asked.
+
+---
+
+## 8. Rules that cost real time before they were written down
+
+Each of these was learned the expensive way. They are ordered by how often they recur, not by
+importance.
+
+1. **A gate scanning an empty set is the failure mode to design against first.** Print the
+   denominator, fail on an empty required set, and where a set is legitimately empty for now,
+   say so and name the constant that makes it real.
+2. **A control is real when something exercises it end to end**, not when its unit tests pass.
+   When something is about to run for the first time, watch it run.
+3. **Test a guard at the point it has to hold**, not the point that is easiest to test.
+4. **A surviving mutant is a missing test** unless provably equivalent — and a mutant that
+   fails the *wrong* test has not tested what you think. A setting that ships empty is a
+   setting nobody has tested.
+5. **Negative tests are satisfied by any fault**, including one nobody meant to introduce.
+   Invert a test occasionally to check it was passing for the reason you think.
+6. **Diff two lists the project already maintains**, and reconcile them against the population
+   they are meant to cover — not merely against each other.
+7. **An escape hatch must never be wider than the gate it escapes.**
+8. **Encode the premise an argument rests on**, or the argument is decoration.
+9. **A stale comment on a security list is an instruction to the next person to leave the
+   hole.**
+10. **Check whether the gate is right before deciding it is inconvenient.** Changing a guard
+    because it blocked you, in the pull request it blocked, is the shape this failure takes.
+11. **Fix it or register it — never mention it.** A remark is forgotten with the session; a
+    registered blocker stops a release until someone closes it.
+12. **"No suppressions" is the right default and the wrong absolute.** The test is whether the
+    rule applies, not whether the marker is present.
+13. **A fixture that trips a scanner teaches the next person to add an exemption.** Assemble it
+    at runtime so no literal exists — do not widen the scanner.
+14. **An unfinished refactor is worse than none.** Revert it rather than repairing it in place.
+15. **When a rule already exists somewhere in a file, extend it rather than writing a parallel
+    one**, or the two will disagree about everything the first one learned.
+16. **Read what the thing says about itself first.** The conflation usually lives in the
+    caller, not in the thing being called.
+17. **Verify by SHA, never from a cached status**, and evaluate a check rollup by completion
+    time — a superseded run leaves a misleading entry.
+18. **Green on a pull request says nothing about green on `main`.** The two triggers take
+    different paths through the same workflow: a path filter reads the diff through the API on
+    one and through git on the other, a re-run replays the *original* event payload, and a
+    cancelled run reports a non-success result. Defects here are invisible until the first
+    merge.

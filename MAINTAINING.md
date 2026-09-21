@@ -113,3 +113,23 @@ Tag template releases so projects can pin/update to a known version.
     firewall** (`init-firewall.sh`, self-verifying/fail-closed) so agent-run code can't exfiltrate;
     and (spine) an **auth scaffold** (`backend/<package>/auth/`, signed bearer token → `Principal`)
     that records the real actor on every telemetry event — anonymous → `system`, forged token → 401.
+- ✅ **Phase F (v3.0.0)** — the adopter-feedback pass. A project generated from v2.0.2 ran for
+  three weeks and audited the gap; its findings are the whole of this phase. Six defects live in
+  every generated project (a forgeable required check, two guards that passed while inspecting
+  nothing, three holes in the pin guard, ADRs gated nowhere, a suppression ratchet counting its
+  own source, protected paths guarded against `Edit` only), the CI hardening behind them
+  (trigger types, cancellation, cooldown, timeouts, the bandit exclusion that excluded nothing,
+  pinned scanners), the structural layer (`check_guard_coverage.py`, `check_unicode_hazards.py`,
+  `make policy`, `make harness`, a denominator on every gate, the readiness verdict bound to the
+  signed artifact — ADR-0011), and the permission model (`confine_to_project.py`,
+  `approved_scope.py`, and the reconciliation test between the lists that answer "which paths
+  need a human?").
+
+  Three habits it is all in service of, and the ones to preserve when changing any of it:
+  **the denominator rule**, **the experience registry**, and **the meta-guard**.
+
+## Releasing
+
+Tag from `main` only. `v3.0.0` is a MAJOR bump: `deploy/verify.sh` takes `--tag` instead of a
+list of images and requires the signed evidence beside it, the conditional client-events ADR
+moved from 0011 to 0012, and `make check` now includes `policy` and `harness`.

@@ -115,6 +115,12 @@ SENSITIVE_PATH_RE = re.compile(
     r"^backend/migrations/versions/.*\.py$"  # irreversible: rewrites stored data
     r"|^backend/[^/]+/auth/"  # who can reach what
     r"|^backend/[^/]+/command/audit\.py$"  # the tamper-evident chain itself
+    # What production actually runs: the compose topology, the reverse proxy, and the script
+    # that decides whether an image is allowed to start. Added because the reconciliation
+    # test found it — deploy/ raised a keystroke prompt and needed no label to merge, which
+    # is the worse half of the pair: noticing at merge time that a change should never have
+    # been made beats nothing, but being asked before making it is the point.
+    r"|^deploy/"
 )
 
 # Config files that can exempt code from a scanner — the suppression ratchet's blind spot.

@@ -134,6 +134,19 @@ copier copy --trust --defaults \
   gh:ajalcance/zynth-setup my-new-project
 ```
 
+### Before you generate
+
+Three things that bite on a fresh machine, in the order you meet them:
+
+- **Python 3.12 must be on `PATH` first.** A current macOS may have only 3.14, and the
+  virtualenv task picks whatever `python3` resolves to. `uv python install 3.12` and put its
+  directory first, or the backend is built against the wrong interpreter.
+- **Node 22.** The frontend gate pins it; a machine on 23 fails the build. `nvm use` reads the
+  `.nvmrc` the template ships, or install `node@22` and put it on the path.
+- **The first push to `main` is the one exception to the branch rule.** The root commit has
+  nowhere else to go, and the local hook will refuse it — push that one by hand, then work in
+  branches from then on.
+
 `--defaults` fills anything you omit. Enabling `include_deploy=true` also requires
 `--data server_host=<ip-or-domain>`.
 

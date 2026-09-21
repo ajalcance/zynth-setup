@@ -40,7 +40,9 @@ Attempts to weaken a guard are themselves gated and reviewed. What each one prot
 | **standards_check** (`scripts/standards_check.py`) | a standards rule claiming a `[CI]` gate that doesn't exist, or a citation to a rule that was deleted | name a real mechanism, or lower the marker to `[Review]` and be honest |
 | **release_preflight** (`scripts/release_preflight.py`) | releasing past an owner's hold, an open production blocker, a dirty or unmerged tree, a re-pointed tag, or missing release notes | fix what it names — a release is the one path with no PR review behind it |
 | **release_evidence** (`scripts/release_evidence.py`) | a release record that names an image by mutable tag, or evidence belonging to a different release | record digests, and promote only the evidence for the tag being promoted |
-{% if include_deploy %}| **cosign verify** | deploying an unsigned / tampered image | build and sign through the release pipeline |
+{% if include_claude_hooks %}| **confine_to_project** (`.claude/hooks/confine_to_project.py`) | a change reaching outside this project — a sibling folder, your dotfiles, the machine | do the work inside the project; if a one-liner is refused for being unreadable, write it out plainly rather than widening the hook |
+| **approved_scope** (`.claude/hooks/approved_scope.py`) | editing a core or system-altering path with nobody in the loop | answer the prompt, or have the owner add a scope to `.claude/approved-scope.json`. A scope buys silence at the keystroke, never at the gate |
+{% endif %}{% if include_deploy %}| **cosign verify** | deploying an unsigned / tampered image | build and sign through the release pipeline |
 {% endif %}{% if include_compliance_spine %}| **spine coverage guards** | an action that isn't recorded / monitored / audited | register the action for emit + detection + audit + compliance |
 | **client/server trust boundary** | sealing something a browser *claimed* into the tamper-evident chain, or taking the actor from a request body | keep client-reported actions in `AUDIT_EXEMPT`; attribution comes from the verified request, never the payload |
 {% endif %}
