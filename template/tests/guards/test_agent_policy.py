@@ -176,6 +176,20 @@ def test_routine_work_does_not_prompt():
         assert rule in allow, f"'{rule}' is routine and should not consume an approval"
 
 
+def _fake_key(kind: str) -> str:
+    """A private-key block assembled at RUNTIME, so this file contains no literal.
+
+    A fixture that trips the secret scanner teaches the next person to add an allowlist
+    entry, and the allowlist is always easier than the fix — which is exactly why the
+    ratchet exists. `detect-private-key` and gitleaks both scan this file on the adopter's
+    very first commit, so a literal here means their first commit is rejected.
+    """
+    marker = "-" * 5
+    head = " ".join(x for x in ("BEGIN", kind, "PRIVATE", "KEY") if x)
+    tail = " ".join(x for x in ("END", kind, "PRIVATE", "KEY") if x)
+    return f"{marker}{head}{marker}\nAAAA\n{marker}{tail}{marker}\n"
+
+
 def _hook_verdict(command: str) -> int:
     """Run the real PreToolUse hook against a command; 2 means blocked."""
     payload = json.dumps({"tool_input": {"command": command}})
@@ -245,7 +259,7 @@ def test_secret_material_is_blocked_on_write(path):
 @secret_hook
 def test_a_private_key_in_the_content_is_blocked_whatever_the_filename():
     """The filename is the easy half; a key pasted into notes.txt is the interesting one."""
-    body = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n"
+    body = _fake_key("OPENSSH")
     assert _write_verdict("/repo/docs/notes.txt", body) == 2
 
 
@@ -263,7 +277,7 @@ def test_a_private_key_inserted_by_an_edit_is_blocked():
     Extending the matcher without reading Edit's own field would be worse than leaving it:
     the hook would run, inspect nothing, and report clean.
     """
-    body = "-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----\n"
+    body = _fake_key("RSA")
     payload = json.dumps(
         {"tool_name": "Edit", "tool_input": {"file_path": "/repo/notes.txt", "new_string": body}}
     )
@@ -279,7 +293,7 @@ def test_a_private_key_inserted_by_an_edit_is_blocked():
 
 @secret_hook
 def test_a_private_key_inserted_by_a_multiedit_is_blocked():
-    body = "-----BEGIN EC PRIVATE KEY-----\nAAAA\n-----END EC PRIVATE KEY-----\n"
+    body = _fake_key("EC")
     payload = json.dumps(
         {
             "tool_name": "MultiEdit",
