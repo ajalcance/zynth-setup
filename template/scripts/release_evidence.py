@@ -39,7 +39,7 @@ import hashlib
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCHEMA_VERSION = 1
@@ -60,6 +60,35 @@ def _pairs(values: list[str], flag: str) -> dict[str, str]:
             raise SystemExit(f"error: {flag} expects name=value, got '{value}'")
         out[name] = rest
     return out
+
+
+def _readiness(path: str) -> dict:
+    """The production-readiness verdict, read from the scan of THIS tree at build time.
+
+    Bound into the evidence rather than re-derived later, because the later checks run
+    somewhere else: promotion checks out the default branch, and the deploy host has whatever
+    the operator last pulled. A verdict computed against the wrong tree passes while the image
+    still carries the blocker — and it looks like a control the whole time.
+    """
+    try:
+        verdict = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(
+            f"error: cannot read the production-readiness verdict at {path} ({exc}). Run\n"
+            f"  python3 scripts/prod_readiness.py --json {path}\n"
+            f"first. Evidence is not emitted without one: a missing verdict is not 'clean'."
+        ) from exc
+    if not isinstance(verdict, dict) or not isinstance(verdict.get("clean"), bool):
+        raise SystemExit(f"error: {path} is not a production-readiness verdict")
+    blockers = verdict.get("open_blockers")
+    if not isinstance(blockers, list) or any(not isinstance(b, str) for b in blockers):
+        raise SystemExit(f"error: {path}: 'open_blockers' must be a list of ids")
+    if verdict["clean"] != (not blockers):
+        raise SystemExit(
+            f"error: {path} says clean={verdict['clean']} with {len(blockers)} open blocker(s). "
+            f"The two must agree, so neither can be edited alone."
+        )
+    return {"clean": verdict["clean"], "open_blockers": sorted(blockers)}
 
 
 def emit(args: argparse.Namespace) -> int:
@@ -86,15 +115,51 @@ def emit(args: argparse.Namespace) -> int:
         "tag": args.tag,
         "commit": args.commit,
         "run_url": args.run_url,
-        "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "built_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "components": components,
+        "production_readiness": _readiness(args.production_readiness),
     }
     Path(args.out).write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
     print(f"release-evidence: wrote {args.out} — {len(components)} component(s).")
     return 0
 
 
-def validate(path: Path, expect_tag: str | None, quiet: bool = False) -> int:
+def _check_readiness(document: dict, errors: list[str], require_clean: bool) -> None:
+    """Fail closed in three directions. Two refusals downstream depend on this field."""
+    verdict = document.get("production_readiness")
+    if not isinstance(verdict, dict):
+        # (1) A missing verdict is NOT clean. Evidence predating the field is refused rather
+        # than waved through: "we did not record it" and "there was nothing to record" are
+        # different facts, and only one of them is safe to deploy.
+        errors.append(
+            "production_readiness is missing — a release that does not record its readiness "
+            "verdict cannot be promoted. Re-cut it: the candidate binds the verdict into the "
+            "evidence, because a scan run at promotion time would describe the wrong tree."
+        )
+        return
+    clean, blockers = verdict.get("clean"), verdict.get("open_blockers")
+    if not isinstance(clean, bool) or not isinstance(blockers, list):
+        errors.append("production_readiness must carry a boolean 'clean' and a list of ids")
+        return
+    # (3) The two must agree, so neither can be edited alone.
+    if clean != (not blockers):
+        errors.append(
+            f"production_readiness says clean={clean} with {len(blockers)} open blocker(s) — "
+            f"the verdict contradicts itself, so one of the two was edited by hand"
+        )
+        return
+    if require_clean and not clean:
+        errors.append(
+            "production_readiness records "
+            + ", ".join(str(b) for b in blockers)
+            + " open at build time. A signed candidate carries its own refusal: these bytes "
+            "contain the stand-in, whatever the default branch looks like now."
+        )
+
+
+def validate(
+    path: Path, expect_tag: str | None, quiet: bool = False, require_clean: bool = False
+) -> int:
     errors: list[str] = []
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
@@ -133,6 +198,8 @@ def validate(path: Path, expect_tag: str | None, quiet: bool = False) -> int:
         datetime.strptime(built_at, "%Y-%m-%dT%H:%M:%SZ")
     except ValueError:
         errors.append(f"built_at {built_at!r} is not an ISO-8601 UTC timestamp")
+
+    _check_readiness(document, errors, require_clean)
 
     components = document.get("components")
     if not isinstance(components, list) or not components:
@@ -222,10 +289,21 @@ def main() -> int:
     parser.add_argument("--image", action="append", default=[], metavar="NAME=REF")
     parser.add_argument("--sbom", action="append", default=[], metavar="NAME=PATH")
     parser.add_argument("--out", default="release-evidence.json")
+    parser.add_argument(
+        "--production-readiness",
+        default="production-readiness.json",
+        metavar="FILE",
+        help="the verdict from `prod_readiness.py --json`, bound into the document",
+    )
+    parser.add_argument(
+        "--require-clean",
+        action="store_true",
+        help="with --validate: also refuse evidence whose recorded verdict is not clean",
+    )
     args = parser.parse_args()
 
     if args.validate:
-        return validate(Path(args.validate), args.expect_tag)
+        return validate(Path(args.validate), args.expect_tag, require_clean=args.require_clean)
     if args.list:
         what, path = args.list
         if what not in ("images", "env"):

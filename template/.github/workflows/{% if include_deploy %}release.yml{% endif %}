@@ -205,6 +205,43 @@ jobs:
       # ---- Evidence: what was built, from what, and which exact bytes were signed ----
       # Validated immediately after it is written, so a malformed record fails the release
       # rather than being discovered by whoever needs it after an incident.
+      # ---- Scan the SBOMs BEFORE anything is recorded, signed or published ----
+      # Ordering is the whole point. Scanning after the evidence is signed and the release is
+      # published means a failing scan rejects a release that already looks legitimate: the
+      # tag exists, the images are signed, and somebody downstream has to be told not to use
+      # them. Scanning here means the candidate simply never comes into being.
+      #
+      # `only-fixed` on purpose: an unfixable advisory in a base image is not something this
+      # release can act on, and a gate you cannot satisfy is one people learn to route around.
+      # A FIXABLE high is a base-image digest bump away, so it is a fair thing to demand.
+      - name: Vulnerability scan (backend SBOM)
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          sbom: sbom-backend.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+
+      - name: Vulnerability scan (frontend SBOM)
+        if: steps.fe.outputs.exists == 'true'
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          sbom: sbom-frontend.spdx.json
+          fail-build: true
+          severity-cutoff: high
+          only-fixed: true
+          output-format: table
+
+      # Scanned HERE, against the tree these bytes were built from — and recorded into the
+      # evidence, which is then signed. Re-deriving it at promotion time is unsound: promotion
+      # runs on workflow_dispatch and checks out the DEFAULT BRANCH, so a fresh scan would
+      # describe main rather than the artifact. If main has since closed a blocker the image
+      # still contains, that scan passes. A readiness check against the wrong tree is worse
+      # than none, because it looks like a control.
+      - name: Production-readiness verdict for the tree being released
+        run: python3 scripts/prod_readiness.py --json production-readiness.json
+
       - name: Build release evidence
         env:
           REPO_NS: ${{ steps.ns.outputs.repo }}
@@ -220,9 +257,12 @@ jobs:
             args+=(--image "frontend=ghcr.io/${REPO_NS}-frontend@${FRONTEND_DIGEST}"
                    --sbom "frontend=sbom-frontend.spdx.json")
           fi
+          args+=(--production-readiness production-readiness.json)
           python3 scripts/release_evidence.py "${args[@]}" --out release-evidence.json
+          # --require-clean here too: a candidate carrying an open blocker is refused at the
+          # moment it is cut, not only when somebody tries to promote it.
           python3 scripts/release_evidence.py --validate release-evidence.json \
-            --expect-tag "${GITHUB_REF_NAME}"
+            --expect-tag "${GITHUB_REF_NAME}" --require-clean
 
       - name: Sign the evidence (keyless)
         run: |
@@ -309,24 +349,31 @@ jobs:
 
       # --expect-tag is the check that matters here: a valid evidence document from a
       # DIFFERENT release would otherwise pass every structural test and promote the wrong bytes.
+      # `@refs/tags/v` and not merely `@refs/`. This workflow also runs on workflow_dispatch,
+      # where the signing certificate records `@refs/heads/<branch>` — so the looser pattern
+      # accepts a genuine signature for the wrong thing: a real cosign signature produced by a
+      # dispatch run on a branch, verified as if it were a release. Pin the trigger.
       - name: Verify the evidence is signed, well-formed, and for this release
         env:
           PROMOTE_TAG: ${{ inputs.promote_tag }}
         run: |
           cosign verify-blob \
             --bundle release-evidence.bundle \
-            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/tags/v" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             release-evidence.json
+          # --require-clean reads the readiness verdict OUT OF THE SIGNED DOCUMENT. The fact
+          # is bound to the bytes it describes, so a signed candidate carries its own refusal
+          # — no scan runs here, because the tree checked out here is not the released one.
           python3 scripts/release_evidence.py --validate release-evidence.json \
-            --expect-tag "$PROMOTE_TAG"
+            --expect-tag "$PROMOTE_TAG" --require-clean
 
       # Verify every recorded digest is signed by this repo's release workflow, then move the
       # :stable tag onto that exact digest. `imagetools create` copies an existing manifest —
       # the digest is preserved, so :stable and the recorded digest are the same bytes.
       - name: Verify signatures and point :stable at the recorded digests
         run: |
-          identity="^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/"
+          identity="^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/tags/v"
           issuer="https://token.actions.githubusercontent.com"
           python3 scripts/release_evidence.py --list images release-evidence.json > images.txt
           while read -r image; do

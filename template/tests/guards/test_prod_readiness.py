@@ -17,6 +17,10 @@ REGISTER_ONE = 'BLOCKERS: tuple[tuple[str, str], ...] = (("auth-stub", "replace 
 def _sandbox(tmp_path, *, register: str, marker: bool):
     guard = install_guard(tmp_path, "prod_readiness.py")
     guard.write_text(guard.read_text().replace(REGISTER_EMPTY, register))
+    # A scannable source file, always. "A clean project" means one with source and no
+    # markers, not an empty directory — and an empty directory is precisely the vacuous
+    # denominator this guard now refuses, so a fixture without one tests the wrong branch.
+    write(tmp_path / "main.py", "def run():\n    return 1\n")
     if marker:
         write(tmp_path / "app.py", f"# {MARKER}(auth-stub): dev-only check\n")
     return guard
@@ -53,3 +57,18 @@ def test_documentation_prose_is_not_counted_as_a_marker(tmp_path):
     guard = _sandbox(tmp_path, register=REGISTER_EMPTY, marker=False)
     write(tmp_path / "ONBOARDING.md", f"Use `# {MARKER}(example): why` to register a hold.\n")
     assert run_guard(guard).returncode == 0
+
+
+def test_scanning_no_file_at_all_fails(tmp_path):
+    """The denominator rule: "no open blockers" and "this read nothing" printed the same line."""
+    guard = install_guard(tmp_path, "prod_readiness.py")  # nothing else in the tree
+    result = run_guard(guard)
+    assert result.returncode != 0, "scanning zero files must fail, not report no blockers"
+    assert "no file was scanned" in result.stdout, result.stdout
+
+
+def test_the_denominator_is_printed_on_success(tmp_path):
+    guard = _sandbox(tmp_path, register=REGISTER_EMPTY, marker=False)
+    result = run_guard(guard)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "inspected" in result.stdout and "file(s)" in result.stdout, result.stdout

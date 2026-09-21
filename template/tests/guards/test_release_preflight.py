@@ -203,7 +203,7 @@ def test_an_open_production_blocker_denies_the_release(tmp_path):
             'BLOCKERS: tuple[tuple[str, str], ...] = (("auth-stub", "replace before launch"),)',
         )
     )
-    write(work / "app.py", '# PROD-' + 'BLOCKER(auth-stub): dev-only\n')
+    write(work / "app.py", "# PROD-" + "BLOCKER(auth-stub): dev-only\n")
     git_commit(work, "add a stub")
     result = _preflight(guard, env=_fake_gh(tmp_path))
     assert result.returncode != 0, "an open production blocker must deny the release"

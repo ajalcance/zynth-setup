@@ -105,6 +105,78 @@ guidance = """
 Rebuilding at deploy time ships bytes nobody reviewed, even from the same source. Promote the
 exact signed digest that CI produced, and verify the signature on the host before it runs.
 """
+{% endif %}
+[[pattern]]
+id = "EXP-0011"
+title = "An escape hatch wider than the gate it escapes"
+enforcement = "guard"
+enforced_by = [
+  "scripts/meta_guard.py",
+  "tests/guards/test_workflow_invariants.py",
+]
+paths = [
+  ".github/workflows/*.yml",
+  ".github/dependabot.yml",
+  "requirements-ci.txt",
+  "scripts/meta_guard.py",
+]
+guidance = """
+A waiver that covers a path no gate covers is a hole with a name. The scanners that DECIDE
+whether a change is safe were installed unpinned while the application manifests sat in every
+"needs a human" list — the one dependency change nothing asked about. Before adding a waiver,
+check that every path it names is a path something really gates; and when an argument rests on
+a premise ("the version has cooled down"), encode the premise or the argument is decoration.
+"""
+
+[[pattern]]
+id = "EXP-0012"
+title = "A guard that is never wired in, or has no test proving it can fail"
+enforcement = "guard"
+enforced_by = ["scripts/check_guard_coverage.py"]
+paths = ["scripts/*.py", "tests/guards/*.py", "Makefile", ".claude/hooks/*.py"]
+guidance = """
+A guard can be written, reviewed, merged and never invoked. It then sits in scripts/ looking
+like a control and cited as one, having never run. A guard with no negative test is the same
+problem one layer down: nothing has demonstrated it can fail, so its green carries no
+information. Every guard needs a fault test AND an enforcement surface. A control is real when
+something exercises it end to end, not when its unit tests pass — when one is about to run for
+the first time, watch it run.
+"""
+
+[[pattern]]
+id = "EXP-0013"
+title = "Green on a pull request says nothing about green on the default branch"
+enforcement = "guard"
+enforced_by = ["tests/guards/test_workflow_invariants.py"]
+paths = [".github/workflows/*.yml"]
+guidance = """
+The two triggers take different paths through the same workflow: a path filter reads the diff
+through the API on a pull request and through git on a push, a re-run replays the ORIGINAL
+event payload so a label applied afterwards never took effect, and a cancelled run reports a
+non-success result. Defects here are structurally invisible until the first merge. Evaluate a
+check rollup by completion time, not by presence — a superseded run leaves a misleading entry.
+"""
+{% if include_deploy %}
+[[pattern]]
+id = "EXP-0014"
+title = "A verdict computed against the wrong tree"
+enforcement = "guard"
+enforced_by = [
+  "scripts/release_evidence.py",
+  "tests/guards/test_release_evidence.py",
+]
+paths = [
+  "scripts/prod_readiness.py",
+  "scripts/release_evidence.py",
+  ".github/workflows/release.yml",
+]
+guidance = """
+A check that runs somewhere other than against the thing it describes passes in exactly the
+case that matters. Promotion checks out the default branch, not the tag; a deploy host has
+whatever was last pulled. If the default branch has since closed a blocker the image still
+contains, a fresh scan there passes — and it looks like a control the whole time. Bind the
+verdict to the artifact it describes and have later steps read it from the signed record.
+"""
 {% endif %}{% if include_compliance_spine %}
 [[pattern]]
 id = "EXP-0009"

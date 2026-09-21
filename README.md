@@ -38,6 +38,16 @@ ruleset + required reviews), not in a file the agent can edit. The full reasonin
   nothing will. Claiming automation you don't have is itself a build failure.
 - **Guard fault tests** — negative tests proving each guard can still fail, because a check that
   silently stops inspecting anything reports green forever.
+- **Guard coverage** — every guard must have a fault test *and* something that actually invokes
+  it. A guard nobody wired in sits in `scripts/` looking like a control, cited as one, having
+  never run.
+- **A denominator on every gate** — each one prints what it inspected and fails on an empty
+  required set, so "nothing to report" and "nothing was looked at" can never print the same line.
+- **One definition of the gate set** — `make policy`, which CI invokes rather than relisting.
+  Two lists mean a gate can be added to one and forgotten in the other.
+- **A readiness verdict bound to the artifact** ([ADR-0011](template/docs/decisions/0011-readiness-belongs-to-the-artifact.md)) —
+  recorded inside the signed release evidence, because a scan run at promotion time describes the
+  default branch rather than the release, and a check against the wrong tree looks like a control.
 - **An engineering standards suite** with stable, citable rule ids (`BE-004`, `SEC-010`, …), each
   declaring how it is really enforced ([ADR-0009](template/docs/decisions/0009-standards-suite-with-honest-enforcement.md)).
 - **An experience-to-control loop** — recorded lessons on a five-rung enforcement ladder, retrieved

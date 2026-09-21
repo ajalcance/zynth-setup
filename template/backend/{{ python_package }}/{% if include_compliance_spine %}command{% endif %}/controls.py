@@ -40,7 +40,7 @@ ACTION_CONTROLS: dict[str, tuple[str, ...]] = {
 }
 
 # Actions deliberately NOT compliance evidence. Per-action judgement calls (routine reads) are
-# added by name; every client-reported action is included by set union, because ADR-0011 makes
+# added by name; every client-reported action is included by set union, because ADR-0012 makes
 # that exemption invariant — an auditor asking "prove this happened" needs an observation, and
 # a client report is a claim. Useful operationally, worthless as attestation.
 CONTROL_EXEMPT: frozenset[str] = frozenset() | CLIENT_ACTIONS

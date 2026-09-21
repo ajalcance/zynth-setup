@@ -198,7 +198,8 @@ def validate() -> int:
         for error in errors:
             print(f"  ✗ {error}")
         print(
-            "\nA registry that can claim enforcement it does not have is a wish list. Fix the entry,\n"
+            "\nA registry that can claim enforcement it does not have is a wish list.\n"
+            "Fix the entry,\n"
             "or lower its rung to one that is honest about how it is actually enforced."
         )
         return 1

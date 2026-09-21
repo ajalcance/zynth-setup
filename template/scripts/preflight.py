@@ -63,7 +63,10 @@ def _check_node(problems: list[tuple[str, str]]) -> None:
     for module in modules:
         if not (ROOT / module / "node_modules").is_dir():
             problems.append(
-                (f"{module}/node_modules is missing (its gate cannot run)", f"cd {module} && npm ci")
+                (
+                    f"{module}/node_modules is missing (its gate cannot run)",
+                    f"cd {module} && npm ci",
+                )
             )
 
     if shutil.which("node") is None:

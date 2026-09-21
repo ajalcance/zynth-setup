@@ -31,6 +31,7 @@ additionally require the register be empty before shipping.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -67,13 +68,31 @@ SKIP_DIRS = {
 # marker would make a fresh project fail on its own example. Same lesson as the suppression
 # scan in scripts/meta_guard.py: a guard must tell "wrote about it" from "did it".
 SCAN_SUFFIXES = {
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-    ".yml", ".yaml", ".toml", ".json", ".sh", ".env", ".example", ".tf",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".json",
+    ".sh",
+    ".env",
+    ".example",
+    ".tf",
 }
+
+
+SCANNED = 0  # the denominator: how many files the last _scan() actually read
 
 
 def _scan() -> dict[str, list[str]]:
     """Map each marker id found in the tree to the files declaring it."""
+    global SCANNED
+    SCANNED = 0
     found: dict[str, list[str]] = {}
     for path in ROOT.rglob("*"):
         if any(part in SKIP_DIRS for part in path.parts) or not path.is_file():
@@ -87,9 +106,45 @@ def _scan() -> dict[str, list[str]]:
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
+        SCANNED += 1
         for match in MARKER_RE.finditer(text):
             found.setdefault(match.group(1), []).append(str(path.relative_to(ROOT)))
     return found
+
+
+def _write_verdict(path: str) -> None:
+    """Record the verdict so it can travel INSIDE the signed release evidence.
+
+    ``--strict`` used to run in exactly one place: the tag. The tag does not reach production;
+    promotion and deploy do, and neither ran it. The obvious fix is unsound — promotion runs on
+    workflow_dispatch and checks out the default branch, so a fresh scan there would describe
+    `main`, not the artifact. If main has since closed a blocker the image still contains, that
+    scan passes. A readiness check against the wrong tree is worse than none, because it looks
+    like a control. The same applies on the deploy host, whose checkout is whatever the
+    operator last pulled.
+
+    So the verdict is bound to the bytes it describes. Two refusals depend on this field, so it
+    fails closed in three directions, each stated:
+
+    1. a MISSING verdict is not clean — release_evidence refuses evidence without one;
+    2. an unreadable register refuses to EMIT rather than writing an empty blocker list,
+       because an empty list means clean (that is this function);
+    3. ``clean`` and ``open_blockers`` must agree, so neither can be edited alone.
+    """
+    try:
+        open_blockers = sorted(bid for bid, _ in BLOCKERS)
+    except Exception as exc:  # noqa: BLE001 — see (2): refuse to emit, never emit "clean"
+        raise SystemExit(
+            f"prod-readiness: FAILED — the register could not be read ({exc}), so no verdict\n"
+            f"was written. An empty blocker list means CLEAN, and emitting one here would\n"
+            f"certify a release nobody checked."
+        ) from exc
+    verdict = {"clean": not open_blockers, "open_blockers": open_blockers}
+    Path(path).write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
+    print(
+        f"prod-readiness: wrote {path} — clean={verdict['clean']}, "
+        f"{len(open_blockers)} open blocker(s)"
+    )
 
 
 def main() -> int:
@@ -99,11 +154,30 @@ def main() -> int:
         action="store_true",
         help="also fail if ANY blocker is still open (use in a release workflow)",
     )
+    ap.add_argument(
+        "--json",
+        metavar="FILE",
+        help="write the verdict for release_evidence.py to bind into the signed document",
+    )
     args = ap.parse_args()
 
     found = _scan()
     registered = {bid for bid, _ in BLOCKERS}
     errors: list[str] = []
+
+    print(
+        f"prod-readiness: inspected {SCANNED} file(s) — {len(found)} marker id(s) in the tree, "
+        f"{len(registered)} in the register"
+    )
+    # The denominator rule (EXP-0001). "No open blockers" and "this never read a file" print
+    # the same reassuring line otherwise, and a narrowed SCAN_SUFFIXES or a renamed root would
+    # turn the register into decoration without anything going red.
+    if not SCANNED:
+        print(
+            "\nprod-readiness: FAILED — no file was scanned for markers, so the register was\n"
+            "compared against nothing. Check SCAN_SUFFIXES and SKIP_DIRS in this script."
+        )
+        return 1
 
     for bid in sorted(set(found) - registered):
         errors.append(
@@ -123,6 +197,9 @@ def main() -> int:
             print(f"  ✗ {e}")
         return 1
 
+    if args.json:
+        _write_verdict(args.json)
+
     if not BLOCKERS:
         print("prod-readiness: OK — no open production blockers.")
         return 0
@@ -133,7 +210,9 @@ def main() -> int:
     if args.strict:
         print("\nprod-readiness: FAILED (--strict) — resolve these before releasing.")
         return 1
-    print("\n(Consistent with the code. Run with --strict in a release workflow to block on these.)")
+    print(
+        "\n(Consistent with the code. Run with --strict in a release workflow to block on these.)"
+    )
     return 0
 
 

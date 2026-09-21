@@ -7,7 +7,6 @@ could pass because a *different* check fired, which would prove nothing about th
 from __future__ import annotations
 
 import pytest
-
 from conftest import git_commit, git_init, install_guard, run, run_guard, write
 
 BASE = "base-ref"

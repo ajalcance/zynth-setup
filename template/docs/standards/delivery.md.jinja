@@ -26,6 +26,8 @@ is empty when nothing does.
 | REL-015 | A new design decision is written as an ADR before it is implemented silently. Implementing an already-decided plan needs no new ADR. | `[Review]` | — |
 | REL-016 | A user-visible change is recorded in the changelog under the unreleased heading. | `[Review]` | — |
 | REL-017 | The repository is the durable memory. When a session note and the repository disagree, the repository wins. | `[Review]` | — |
+| REL-018 | The repository-wide gate set has ONE definition — `make policy` — which CI invokes rather than relisting. Two lists mean a gate can be added to one and forgotten in the other. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
+| REL-019 | The guards, their fault tests and the session hooks are linted like any other code. A path missing from a lint target is a tree nothing checks. | `[CI]` | `ruff-harness.toml` |
 
 ## Release
 
@@ -46,4 +48,7 @@ is empty when nothing does.
 | REL-029 | The release record names every image by digest. A tag is a mutable pointer, so evidence naming one records a name, not bytes. | `[CI]` | `scripts/release_evidence.py` |
 | REL-030 | Promotion verifies that the evidence in hand is the evidence **for that release**, not merely a valid document. | `[CI]` | `scripts/release_evidence.py` |
 | REL-031 | Moving what production pulls requires a typed confirmation. A control you can satisfy by reflex is not a control. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
+| REL-032 | The production-readiness verdict is recorded inside the signed evidence and read from there. A scan run at promotion or on the deploy host describes the wrong tree. | `[CI]` | `scripts/release_evidence.py` |
+| REL-033 | A release whose readiness verdict was not clean at build time is never promotable, and a release recording no verdict at all is refused. | `[CI]` | `scripts/release_evidence.py` |
+| REL-034 | The SBOM scan runs before anything is recorded, signed or published. Scanning afterwards rejects a release that already looks legitimate. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
 {%- endif %}

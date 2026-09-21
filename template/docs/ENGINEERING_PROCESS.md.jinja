@@ -47,13 +47,17 @@ is concentrated on **authority and policy** changes while routine work is checke
 | CI | Always-on hygiene (gitleaks, private-key, EOF/whitespace) | `[CI]` |
 | CI | Blocking SAST (Semgrep dangerous-ops) + advisory community scan | `[CI]` |
 | CI | Path-aware backend{% if include_frontend %}/frontend{% endif %}{% if include_docs_site %}/docs-site{% endif %} suites | `[CI]` |
-| CI | Static policy guards (`dod-check`, `check_pins`, `meta_guard`, `prod_readiness`) | `[CI]` |
+| CI | Static policy guards, one list — `make policy`, which CI invokes rather than relisting | `[CI]` |
+| CI | **Guard coverage** — every guard has a fault test and something that invokes it | `[CI]` (`check_guard_coverage`) |
+| CI | Unicode hazards — no bidirectional, zero-width or invisible character in any source file | `[CI]` (`check_unicode_hazards`) |
+| CI | The harness itself is linted — the guards, their tests and the session hooks | `[CI]` (`make harness`) |
 | CI | Anti-weakening ratchet — suppressions, missing tests, guard-file edits, sensitive paths, lowered thresholds | `[CI]` (`meta_guard`) |
 | CI | **Guard fault tests** — negative tests proving each guard can still fail | `[CI]` (`tests/guards/`) |
 | CI | Required aggregate `ci-complete` | `[CI]` |
 | CI | Semantic correctness of a change | `[Review]` — human judgment |
 | CI | Workflow linting (actionlint, pinned + checksummed) and shell linting (shellcheck) | `[CI]` |
 | Release | Tag must be an ancestor of `main`; cosign-signed images by digest{% if include_deploy %}; verified on the host by `deploy/verify.sh`{% endif %} | `[CI]`{% if not include_deploy %} (enable the deploy module){% endif %} |
+| Release | Readiness verdict recorded inside the signed evidence and read from there, never re-scanned | {% if include_deploy %}`[CI]` (`release_evidence`){% else %}`[Review]` (enable the deploy module){% endif %} |
 | Release | Build-once candidate, SBOM, digest-pinned signed evidence, promote-without-rebuild | {% if include_deploy %}`[CI]` (`release.yml` + `release_evidence`){% else %}`[Review]` (enable the deploy module){% endif %} |
 | Release | Fail-closed preflight before a tag is cut — `make release-preflight TAG=vX.Y.Z` | {% if include_deploy %}`[CI]` (`release_preflight`, also run in the release `guard` job){% else %}`[Review]` — local only until the deploy module is enabled{% endif %} |
 | Release | Production readiness holds (register your own: IAM, approval separation, operational readiness) | {% if include_deploy %}`[CI]` — `--strict` runs in the release preflight; the register ships **empty**, see §6{% else %}`[Review]` — the mechanism is live, but no release path calls `--strict` without the deploy module{% endif %} |

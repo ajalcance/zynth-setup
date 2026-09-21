@@ -3,7 +3,7 @@
 # for local iteration (tagged as $BACKEND_IMAGE / $FRONTEND_IMAGE from ../.env).
 #
 # PRODUCTION must NOT use this file — deploy only verified, signed images:
-#   ./verify.sh "$BACKEND_IMAGE"{% if include_frontend %} "$FRONTEND_IMAGE"{% endif %}
+#   ./verify.sh --tag v1.2.3   # fail-closed: evidence + readiness + signatures
 #   docker compose -f docker-compose.yml --env-file ../.env up -d
 services:
   backend:

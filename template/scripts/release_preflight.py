@@ -192,7 +192,17 @@ def check_release_holds(repo: str | None, errors: list[str]) -> None:
             f"an unreadable hold is treated as an active one."
         )
         return
-    command = ["gh", "issue", "list", "--label", BLOCKER_LABEL, "--state", "open", "--json", "number,title"]
+    command = [
+        "gh",
+        "issue",
+        "list",
+        "--label",
+        BLOCKER_LABEL,
+        "--state",
+        "open",
+        "--json",
+        "number,title",
+    ]
     if repo:
         command += ["--repo", repo]
     result = _run(command)

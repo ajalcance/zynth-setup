@@ -1,0 +1,33 @@
+# Lint configuration for the HARNESS trees — scripts/, tests/guards/ and .claude/hooks/.
+#
+# These are the files that check everything else, and until this existed they were the one
+# part of the repository nothing checked: `make backend` runs ruff over backend/ only, so a
+# guard could drift in style, imports and naming with nothing to say so. A path missing from
+# a lint target is a tree nothing checks.
+#
+# The rule set is deliberately the backend's, minus three rules that measure the wrong thing
+# here. Each exclusion carries its reason, because the reason is the review:
+#
+#   S101 (assert)        — a test suite is assertions. Flagging them is noise, and noise in a
+#                          new gate is how the gate gets turned off in its first week.
+#   S603/S607 (subprocess) — these guards exist to shell out to git. That is their job, the
+#                          arguments are literals, and no user input reaches a shell.
+#   C90 (cyclomatic)     — the validators here are long lists of INDEPENDENT checks, each
+#                          appending one error message. Cyclomatic complexity counts branches,
+#                          which for that shape measures length rather than tangle. Setting a
+#                          ceiling at today's worst function would be fitting the gate to its
+#                          subject. backend/ still enforces C90 at 10, where it does measure
+#                          the right thing — this exclusion is scoped to the harness, not
+#                          removed from the project.
+#
+# A gate that has never been green is not a gate; it is a broken build that teaches people to
+# ignore the colour. This configuration is green on a freshly generated project, and the
+# template self-test keeps it that way.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "N"]
+
+[format]
+quote-style = "double"

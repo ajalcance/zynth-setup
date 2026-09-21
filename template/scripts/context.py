@@ -114,8 +114,11 @@ def show_release() -> None:
     released = re.search(r"^##\s*\[(\d+\.\d+\.\d+)\]", changelog, re.M)
     print(f"  latest released : {released.group(1) if released else '(none yet)'}")
     unreleased = re.search(r"##\s*\[Unreleased\]\s*\n(.*?)(\n##|\Z)", changelog, re.S)
-    pending = [ln.strip() for ln in (unreleased.group(1).splitlines() if unreleased else [])
-               if ln.strip().startswith("-")]
+    pending = [
+        ln.strip()
+        for ln in (unreleased.group(1).splitlines() if unreleased else [])
+        if ln.strip().startswith("-")
+    ]
     print(f"  unreleased notes: {len(pending)}")
     tag = _git("describe", "--tags", "--abbrev=0")
     print(f"  latest tag      : {tag or '(none)'}")

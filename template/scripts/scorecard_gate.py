@@ -70,14 +70,33 @@ def main() -> int:
         elif score < minimum:
             failures.append(f"{name}: {score}/10 (min {minimum})")
 
+    evaluated = len(GATED_CHECKS) - len(skipped)
+    print(
+        f"scorecard-gate: evaluated {evaluated}/{len(GATED_CHECKS)} gated check(s) "
+        f"against a floor of {args.min}/10"
+    )
     for s in skipped:
-        print(f"scorecard-gate: skipped {s}")
+        print(f"  · skipped {s}")
+
+    # The denominator rule (EXP-0001). Each individual skip is legitimate — Scorecard returns
+    # -1 for "cannot tell", and failing on that would be vacuous. But if EVERY gated check was
+    # skipped, nothing was measured, and printing OK would report a posture this never looked
+    # at. That is indistinguishable from a healthy repository, which is the whole problem.
+    if not evaluated:
+        print(
+            "\nscorecard-gate: FAILED — every gated check was skipped, so the posture was\n"
+            "never measured. This is not 'no regression found', it is 'nothing was looked\n"
+            "at'. Usually the token: on a private repo SCORECARD_TOKEN must be a *classic*\n"
+            "PAT with `repo` scope. Fix the run rather than reading this as green."
+        )
+        return 1
+
     if failures:
         print("\nscorecard-gate: FAILED — security posture regressed:")
         for f in failures:
             print(f"  ✗ {f}")
         return 1
-    print(f"scorecard-gate: OK — gated checks ≥ {args.min}/10.")
+    print(f"scorecard-gate: OK — {evaluated} gated check(s) at or above their floor.")
     return 0
 
 

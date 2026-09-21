@@ -113,3 +113,30 @@ def test_newest_first_lessons_pass(tmp_path):
     )
     result = run_guard(guard)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# --- The denominator: an as-built check over an absent tree passes over nothing ---------
+
+
+def test_the_denominator_is_printed_on_success(tmp_path):
+    guard = _sandbox(tmp_path, _base_arch())
+    result = run_guard(guard)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "inspected" in result.stdout and "top-level dirs" in result.stdout, result.stdout
+
+
+def test_a_renamed_package_does_not_silently_empty_the_check(tmp_path):
+    """After a package rename, every as-built assertion walks an absent directory.
+
+    It finds nothing to complain about and prints OK over a page describing a different
+    project — the worst kind of green, because it is indistinguishable from a real one.
+    """
+    guard = install_guard(tmp_path, "dod-check.py")
+    # Point the guard at a package that does not exist, and remove the one directory that
+    # would otherwise keep the top-level count non-zero.
+    guard.write_text(
+        guard.read_text().replace(f'APP_PKG = "{app_package()}"', 'APP_PKG = "renamed_away"')
+    )
+    write(tmp_path / ARCH, "# Current State\n")
+    result = run_guard(guard, cwd=tmp_path / "scripts")
+    assert "inspected" in result.stdout, result.stdout

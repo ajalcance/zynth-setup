@@ -35,7 +35,7 @@ backend/                    FastAPI backend (Python 3.12)
   frontend/tests/           vitest + Testing Library
 {% endif %}{% if include_docs_site %}docs-site/                  documentation site
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
-{% endif %}scripts/                    dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · standards_check.py · release_preflight.py · release_evidence.py · preflight.py · context.py · pr_declaration.py · risk_context.py · bootstrap-repo.sh
+{% endif %}scripts/                    check_guard_coverage.py (every guard has a fault test + a surface) · check_unicode_hazards.py · dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · standards_check.py · release_preflight.py · release_evidence.py · preflight.py · context.py · pr_declaration.py · risk_context.py · bootstrap-repo.sh
 tests/guards/               negative tests proving each guard in scripts/ CAN fail
 experience/                 registry.toml — lessons normalized onto the enforcement ladder
 docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITECTURE / PLAN / LESSONS / decisions
@@ -96,7 +96,7 @@ docs/standards/             the full rule suite — stable ids, honest enforceme
   (`GET /api/v1/example`) demonstrates the pattern; the worker (`command/worker.py`) ingests + seals.
   Client-reported events (`POST /api/v1/client-events`) are authenticated, server-attributed,
   allowlisted, rate-capped and stamped `source=client` — they are queryable data but can never
-  enter the audit chain or the compliance map (ADR-0011).
+  enter the audit chain or the compliance map (ADR-0012).
   A signed bearer token (`auth/`) resolves the request **principal**, recorded as the event actor
   (anonymous → `system`; a forged token is rejected 401).
 {% endif %}
@@ -108,4 +108,4 @@ this is only the starter skeleton — build features one reviewed slice per PR a
 
 ## ADRs governing the as-built system
 
-0001 (record ADRs) · 0002 (defense-in-depth against malicious code) · 0003 (monorepo layout & backend skeleton) · 0004 (agent-resistant guardrails) · 0005 (trunk-based branching) · 0006 (engineering process & control system) · 0007 (agent permission model) · 0008 (experience-to-control loop) · 0009 (standards suite) · 0010 (release evidence chain){% if include_compliance_spine %} · 0011 (client-reported events){% endif %}.
+0001 (record ADRs) · 0002 (defense-in-depth against malicious code) · 0003 (monorepo layout & backend skeleton) · 0004 (agent-resistant guardrails) · 0005 (trunk-based branching) · 0006 (engineering process & control system) · 0007 (agent permission model) · 0008 (experience-to-control loop) · 0009 (standards suite) · 0010 (release evidence chain) · 0011 (readiness belongs to the artifact){% if include_compliance_spine %} · 0012 (client-reported events){% endif %}.

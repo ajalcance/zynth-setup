@@ -292,31 +292,28 @@ jobs:
           python3 scripts/pr_declaration.py --body-file /tmp/pr-body.md \
             --base "origin/${{ github.base_ref }}"
 
-      # Blocking: an entry claiming `guard` enforcement must name a mechanism that exists,
-      # so the registry cannot assert automation it does not have.
-      - name: Experience registry is honest about its enforcement
-        run: python3 scripts/risk_context.py --validate
+      # ONE list, in the Makefile. This job used to relist each gate script by hand beside
+      # the Makefile's own list, and two lists mean a gate can be added to one and forgotten
+      # in the other — a gate that joins the local suite and then does not run in CI is
+      # indistinguishable from one that runs and passes. `make policy` covers:
+      #   guard coverage · unicode hazards · registry honesty · as-built + stale refs ·
+      #   production-readiness register · standards honesty · dependency pins
+      # tests/guards/test_workflow_invariants.py fails if this job ever calls one of those
+      # scripts directly again.
+      - name: Repository policy gates (make policy)
+        run: make policy
 
-      - name: As-built + stale-reference guards
-        run: python3 scripts/dod-check.py
-
-      # Consistency only — deliberately does NOT fail merely because open blockers exist, or a
-      # project would be red for its whole build phase and everyone would learn to ignore it.
-      - name: Production-readiness register matches the code
-        run: python3 scripts/prod_readiness.py
-
-      # Blocking: a standards rule marked [CI] must name a mechanism that exists, and every
-      # rule id cited in the docs must resolve. Without this the suite could describe a control
-      # system nobody built, and a green pipeline would be read as proof of rules it never ran.
-      - name: Standards suite is honest about its enforcement
-        run: python3 scripts/standards_check.py
-
-      # Every requirement must be exactly pinned ('==' or a hash) — no floating spec an agent or
-      # a resolver could bump silently. JS is deterministic via `npm ci` + package-lock integrity.
-      - name: Requirements are fully pinned
+      # The guards, their fault tests and the session hooks — the trees `make backend` does
+      # not reach. Same config file locally and here, so the two cannot disagree about what
+      # counts as clean.
+      - name: Lint the harness (make harness)
         run: |
-          python3 scripts/check_pins.py backend/requirements.txt \
-            backend/requirements-dev.txt requirements-ci.txt
+          # Constrained by backend/requirements-dev.txt, which already pins ruff and black
+          # for `make backend`. One source of truth for the versions: a second pin here
+          # would drift, and then "clean" would mean two different things.
+          pip install -q -c backend/requirements-dev.txt ruff black
+          ruff check --config ruff-harness.toml scripts tests/guards .claude/hooks
+          black --check -l 100 scripts tests/guards .claude/hooks
 
       # An agent trying to make CI green can add # noqa / # type: ignore / # nosemgrep /
       # # pragma: no cover, or change code without a test. This diff-based check fails on net-new

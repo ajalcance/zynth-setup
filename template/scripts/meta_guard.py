@@ -131,8 +131,22 @@ THRESHOLDS = (
 )
 
 
+class DiffUnavailableError(RuntimeError):
+    """git could not produce a diff, so every check below would inspect nothing."""
+
+
 def _run(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+    try:
+        done = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise DiffUnavailableError(f"git {' '.join(args)} could not run — {exc}") from exc
+    if done.returncode != 0:
+        raise DiffUnavailableError(
+            f"git {' '.join(args)} exited {done.returncode} — "
+            f"{done.stderr.strip() or 'no stderr'}. The base ref is probably missing from this "
+            f"checkout; fetch it (actions/checkout with fetch-depth: 0) and re-run."
+        )
+    return done.stdout
 
 
 def _diff(base: str) -> str:
@@ -266,16 +280,47 @@ def main() -> int:
     args = ap.parse_args()
 
     errors: list[str] = []
-    if not args.allow_suppressions:
-        check_suppressions(args.base, errors)
-    if not args.allow_missing_tests:
-        check_tests(args.base, errors)
-    if not args.allow_guardrail_change:
-        check_guard_files(args.base, errors)
-    if not args.allow_sensitive:
-        check_sensitive_paths(args.base, errors)
-    if not args.allow_exemptions:
-        check_exemptions(args.base, errors)
+    waived = [
+        name
+        for name, off in (
+            ("suppressions", args.allow_suppressions),
+            ("missing-tests", args.allow_missing_tests),
+            ("guardrail-change", args.allow_guardrail_change),
+            ("sensitive", args.allow_sensitive),
+            ("exemptions", args.allow_exemptions),
+        )
+        if off
+    ]
+    try:
+        changed = [f for f in _run("diff", "--name-only", f"{args.base}...HEAD").splitlines() if f]
+
+        # The denominator. An EMPTY diff is legitimate here — the guard is diff-based, and a
+        # PR can touch nothing this cares about. An unreadable one is not, and is handled
+        # below: without it every check inspects nothing and all five report clean (EXP-0001).
+        print(
+            f"meta-guard: inspected {len(changed)} changed file(s) against {args.base} — "
+            f"{5 - len(waived)}/5 check(s) active"
+            + (f", waived by label: {', '.join(waived)}" if waived else "")
+        )
+
+        if not args.allow_suppressions:
+            check_suppressions(args.base, errors)
+        if not args.allow_missing_tests:
+            check_tests(args.base, errors)
+        if not args.allow_guardrail_change:
+            check_guard_files(args.base, errors)
+        if not args.allow_sensitive:
+            check_sensitive_paths(args.base, errors)
+        if not args.allow_exemptions:
+            check_exemptions(args.base, errors)
+    except DiffUnavailableError as exc:
+        print("meta-guard: FAILED — the diff could not be read, so nothing was checked\n")
+        print(f"  ✗ {exc}")
+        print(
+            "\nA hard failure on purpose: with no diff, all five checks find nothing and the "
+            "guard reports clean over a change it never saw."
+        )
+        return 1
 
     if errors:
         print("meta-guard: FAILED\n")

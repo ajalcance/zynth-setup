@@ -3,6 +3,8 @@
 # so "run all checks" is a single command, not several remembered by hand.
 #
 #   make check        full local gate
+#   make policy       the repository-wide guards (the same list CI runs)
+#   make harness      lint the guards, their tests and the hooks
 #   make backend      backend gate only (the common per-slice case)
 #   make fmt          auto-format everything
 #   make dod-check    doc-consistency guards (as-built + stale refs)
@@ -12,10 +14,10 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help context risk-context preflight release-preflight check backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+.PHONY: help context risk-context preflight release-preflight check policy harness backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: context | risk-context | preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
+	@echo "Targets: context | risk-context | preflight | check | policy | harness | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 # bandit's -x is a PREFIX match against the paths it scans, and `-r .` yields paths that
@@ -78,7 +80,7 @@ guard-tests:
 	backend/.venv/bin/pytest tests/guards -q
 
 # Full gate — everything. preflight runs first so a missing toolchain is named, not cryptic.
-check: preflight guard-tests backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+check: preflight guard-tests policy harness backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 # Convenience aliases referenced in CLAUDE.md and the PR template.
 test:
@@ -103,7 +105,45 @@ release-preflight:
 	@test -n "$(TAG)" || { echo "usage: make release-preflight TAG=v1.2.3"; exit 1; }
 	python3 scripts/release_preflight.py --tag "$(TAG)"
 
+# ---- The harness: lint the files that check everything else -----------------
+# `make backend` runs ruff and black over backend/ only, so until this target existed the
+# guards, their fault tests and the session hooks were the one part of the repository nothing
+# checked. A path missing from a lint target is a tree nothing type-checks.
+#
+# The rule set lives in ruff-harness.toml with a written reason for each exclusion. It is
+# green on a freshly generated project and the template self-test keeps it that way: a gate
+# that has never been green is not a gate, it is a broken build that teaches people to ignore
+# the colour.
+#
+# Deliberately NOT mypy --strict. That would arrive with several hundred findings on day one,
+# which is the same trap from the other side. Worth doing as its own piece of work.
+harness:
+	backend/.venv/bin/ruff check --config ruff-harness.toml scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %} && \
+	backend/.venv/bin/black --check -l 100 scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %}
+
+# ---- The policy gate set — ONE definition -----------------------------------
+# Every repository-wide guard, in one list. The CI `static` job calls this target rather than
+# relisting the scripts, and so does the pre-push hook, because two lists mean a gate can be
+# added to one and forgotten in the other — which is not hypothetical: it is how a gate can
+# join the local suite and then not run in CI for four consecutive pushes.
+#
+# tests/guards/test_workflow_invariants.py fails if CI invokes any of these scripts BOTH
+# directly and through `make policy`, and if this list is ever empty.
+#
+# The diff-based guards (meta_guard, pr_declaration) are deliberately NOT here: they need a
+# base ref and a PR payload, so they belong to the pull-request context, not to a local run.
+policy:
+	python3 scripts/check_guard_coverage.py && \
+	python3 scripts/check_unicode_hazards.py && \
+	python3 scripts/risk_context.py --validate && \
+	python3 scripts/dod-check.py && \
+	python3 scripts/prod_readiness.py && \
+	python3 scripts/standards_check.py && \
+	python3 scripts/check_pins.py backend/requirements.txt backend/requirements-dev.txt requirements-ci.txt
+
 # Documentation consistency guards + the production-readiness register + standards honesty.
+# Kept as its own name because CLAUDE.md §2 and the PR template both cite it; it is a subset
+# of `make policy`, never a second list of the same things.
 dod-check:
 	python3 scripts/dod-check.py && \
 	python3 scripts/prod_readiness.py && \

@@ -63,6 +63,13 @@ jobs:
       - name: No tracked file is matched by an ignore rule
         run: ./scripts/check-tracked-ignores.sh
 
+      # Runs BEFORE generation, because generation is what a broken template breaks — and it
+      # breaks with no filename and a line number into the rendered stream. This names both.
+      - name: Every template compiles as Jinja
+        run: |
+          pip install -q jinja2
+          ./scripts/check-jinja-syntax.sh
+
       - name: Install Copier
         run: pipx install copier
 
@@ -96,30 +103,37 @@ jobs:
             exit 1
           fi
 
-      - name: Backend gate
+      # The venv goes exactly where CLAUDE.md §4 tells a developer to put it, and the gates
+      # below run through `make`, as a developer would. Relisting the commands here was a
+      # THIRD copy of the gate list beside the Makefile and the generated project's own CI —
+      # and it hid a real defect: `bandit -r . -ll -x tests` excluded nothing (the flag is a
+      # prefix match and `-r .` yields `./tests`), which CI never noticed because a runner
+      # has no virtualenv, while every developer who followed the setup instructions scanned
+      # two million lines of site-packages. A local mirror of CI is a claim about two
+      # environments, and only running it in both tests it.
+      - name: Provision the venv where a developer puts it
         working-directory: /tmp/gen/backend
         run: |
           python -m venv .venv
           .venv/bin/pip install -q -r requirements.txt -r requirements-dev.txt
-          .venv/bin/ruff check .
-          .venv/bin/black --check .
-          .venv/bin/mypy .
-          .venv/bin/bandit -r app -ll -q
-          .venv/bin/pip-audit -r requirements.txt
-          .venv/bin/pytest -q --cov
+
+      - name: Backend gate (make backend — the developer's command, venv and all)
+        working-directory: /tmp/gen
+        run: make backend
 
       - name: Guard fault tests (each guard can still fail)
         working-directory: /tmp/gen
         run: |
-          pip install -q pyyaml pytest
+          pip install -q -c requirements-ci.txt pyyaml pytest
           python -m pytest tests/guards -q
 
-      - name: Doc-consistency guards
+      - name: Repository policy gates (make policy)
         working-directory: /tmp/gen
-        run: |
-          python scripts/dod-check.py
-          python scripts/prod_readiness.py
-          python scripts/standards_check.py
+        run: make policy
+
+      - name: Lint the harness (make harness)
+        working-directory: /tmp/gen
+        run: make harness
 
       # `make check` passing is NOT sufficient to commit: the generated repo's own `hygiene`
       # job (and the pre-commit hook `--trust` installs) run these, so a generated file that

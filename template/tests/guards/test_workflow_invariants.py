@@ -12,7 +12,6 @@ import re
 
 import pytest
 import yaml
-
 from conftest import REPO_ROOT
 
 CI = REPO_ROOT / ".github" / "workflows" / "ci.yml"
@@ -430,3 +429,200 @@ def test_a_job_either_keeps_its_credential_or_does_not_fetch(workflow):
         f"job(s) that drop the credential and then run git against the remote: {broken}. "
         f"Keep the credential, or stop fetching."
     )
+
+
+# --- One definition of the gate set -----------------------------------------------------
+
+MAKEFILE = REPO_ROOT / "Makefile"
+POLICY_SCRIPTS_RE = re.compile(r"python3 (scripts/[A-Za-z0-9_.\-]+\.py)")
+
+
+def _policy_scripts() -> set[str]:
+    body = re.search(r"^policy:\n((?:\t.*\n)+)", MAKEFILE.read_text(), re.M)
+    assert body, "the Makefile has no `policy:` target"
+    return set(POLICY_SCRIPTS_RE.findall(body.group(1)))
+
+
+def test_make_policy_is_not_empty():
+    """The denominator rule applied to the gate set itself."""
+    scripts = _policy_scripts()
+    assert len(scripts) >= 5, (
+        f"`make policy` runs only {len(scripts)} gate(s) — the repository-wide guard set has "
+        f"been emptied, and everything downstream of it would pass over nothing"
+    )
+
+
+def test_every_gate_in_make_policy_exists():
+    missing = sorted(s for s in _policy_scripts() if not (REPO_ROOT / s).is_file())
+    assert not missing, f"`make policy` names script(s) that do not exist: {missing}"
+
+
+def test_the_ci_static_job_calls_make_policy_rather_than_relisting_the_gates():
+    """Two lists mean a gate can be added to one and forgotten in the other.
+
+    A gate that joins the local suite and then does not run in CI is indistinguishable from
+    one that runs and passes, which is the worst available failure mode.
+    """
+    runs = [s["run"] for s in _workflow(CI)["jobs"]["static"]["steps"] if "run" in s]
+    joined = "\n".join(runs)
+    assert "make policy" in joined, "the static job must invoke `make policy`"
+    relisted = sorted(script for script in _policy_scripts() if script in joined)
+    assert not relisted, (
+        f"the static job invokes these directly AND through `make policy`: {relisted}. "
+        f"Keep one list, in the Makefile."
+    )
+
+
+def test_the_policy_gates_are_reachable_from_the_required_check():
+    """`make policy` running in a job nothing fans in would block no merge."""
+    jobs = _workflow(CI)["jobs"]
+    running = {
+        name
+        for name, job in jobs.items()
+        if any("make policy" in s.get("run", "") for s in job.get("steps", []))
+    }
+    assert running, "no job runs `make policy`"
+    aggregated = set(jobs["ci-complete"]["needs"])
+    assert running <= aggregated, (
+        f"job(s) running the policy gates are not fanned into ci-complete: "
+        f"{sorted(running - aggregated)}"
+    )
+
+
+# --- The release chain ------------------------------------------------------------------
+
+
+def test_every_signature_check_names_a_tag_push_identity():
+    """`@refs/` alone accepts a branch build or a dispatch: a real signature for the wrong thing.
+
+    release.yml runs on workflow_dispatch as well as on a tag push, and a dispatch run's
+    signing certificate records `@refs/heads/<branch>`. The looser pattern therefore accepts a
+    genuine cosign signature produced by the wrong trigger — a real signature for the wrong
+    thing, which is worse than no signature because it verifies.
+    """
+    if not RELEASE_WF.is_file():
+        pytest.skip("the deploy module is not enabled in this project")
+    body = RELEASE_WF.read_text()
+    # Comment lines are prose that MENTIONS a command, not a command.
+    code = "\n".join(line for line in body.splitlines() if not line.strip().startswith("#"))
+
+    verifications = len(re.findall(r"cosign verify(?:-blob)?\b", code))
+    assert verifications, "the release workflow runs no cosign verification at all"
+    flags = len(re.findall(r"--certificate-identity-regexp", code))
+    assert flags >= verifications, (
+        f"{verifications} cosign verification(s) but only {flags} pinned identity — a "
+        f"verification that does not pin who signed accepts a signature from anything"
+    )
+
+    # Every identity regexp in the file, whether written inline or assigned to a shell
+    # variable first. Following the indirection matters: a test that only reads the flag line
+    # sees `"$identity"` and learns nothing about what it holds.
+    patterns = re.findall(r"\^https://github\.com/[^\s\"\']*", code)
+    assert patterns, "no identity pattern found — this assertion would be vacuous"
+    loose = [p for p in patterns if "release" not in p or "refs/tags/" not in p]
+    assert (
+        not loose
+    ), f"identity regexp(s) that do not pin BOTH the release workflow and a tag push: {loose}"
+
+
+def test_the_scan_runs_before_anything_is_recorded_or_published():
+    """Scanning after the evidence is signed rejects a release that already looks legitimate."""
+    if not RELEASE_WF.is_file():
+        pytest.skip("the deploy module is not enabled in this project")
+    steps = _workflow(RELEASE_WF)["jobs"]["candidate"]["steps"]
+    names = [f"{s.get('name', '')} {s.get('uses', '')}" for s in steps]
+
+    def first(predicate):
+        return next((i for i, n in enumerate(names) if predicate(n)), None)
+
+    scan = first(lambda n: "scan-action" in n)
+    assert scan is not None, "the candidate never scans its SBOMs — this would be vacuous"
+    for later in ("Build release evidence", "Sign the evidence", "Publish the release"):
+        index = first(lambda n, later=later: later in n)
+        assert index is not None, f"the candidate has no '{later}' step"
+        assert scan < index, f"the scan runs AFTER '{later}'"
+
+
+def test_a_candidate_with_an_open_blocker_is_never_promotable():
+    """The verdict is bound to the artifact, and both refusals read it from there."""
+    if not RELEASE_WF.is_file():
+        pytest.skip("the deploy module is not enabled in this project")
+    body = RELEASE_WF.read_text()
+    assert (
+        "prod_readiness.py --json" in body
+    ), "the candidate does not record a readiness verdict, so the evidence carries none"
+    assert body.count("--require-clean") >= 2, (
+        "the readiness verdict must be enforced where the artifact actually moves: at the "
+        "candidate AND at promotion. Running it only at the tag gates nothing, because the "
+        "tag does not reach production."
+    )
+
+
+def test_promotion_re_derives_nothing_it_could_read_from_the_evidence():
+    """A scan at promotion time describes the default branch, not the tag being promoted.
+
+    If main has since closed a blocker the image still contains, that scan passes — and it
+    looks like a control the whole time.
+    """
+    if not RELEASE_WF.is_file():
+        pytest.skip("the deploy module is not enabled in this project")
+    promote = _workflow(RELEASE_WF)["jobs"]["promote"]
+    runs = "\n".join(s.get("run", "") for s in promote["steps"])
+    assert "prod_readiness.py" not in runs, (
+        "promotion scans the tree it checked out, which is the DEFAULT BRANCH — not the "
+        "release. Read the recorded verdict from the signed evidence instead."
+    )
+
+
+# --- The harness: the trees that check everything else ----------------------------------
+
+HARNESS_TREES = ("scripts", "tests/guards", ".claude/hooks")
+
+
+def _harness_target() -> str:
+    body = re.search(r"^harness:\n((?:\t.*\n)+)", MAKEFILE.read_text(), re.M)
+    assert body, "the Makefile has no `harness:` target"
+    return body.group(1)
+
+
+def test_the_harness_lint_covers_every_harness_tree():
+    """A path missing here is a tree nothing checks, which is how this audit started."""
+    recipe = _harness_target()
+    present = [t for t in HARNESS_TREES if (REPO_ROOT / t).is_dir()]
+    assert present, "no harness tree exists — this assertion would be vacuous"
+    missing = [t for t in present if t not in recipe]
+    assert not missing, f"`make harness` does not lint: {missing}"
+
+
+def test_the_harness_lint_runs_every_harness_tool():
+    recipe = _harness_target()
+    for tool in ("ruff", "black"):
+        assert tool in recipe, f"`make harness` does not run {tool}"
+
+
+def test_the_harness_config_exists_and_is_used_by_both():
+    """Local and CI must agree about what counts as clean, or one teaches the wrong lesson."""
+    config = REPO_ROOT / "ruff-harness.toml"
+    assert config.is_file(), "ruff-harness.toml is missing, so `make harness` lints nothing"
+    assert "ruff-harness.toml" in _harness_target()
+    ci_runs = "\n".join(s.get("run", "") for s in _workflow(CI)["jobs"]["static"]["steps"])
+    assert "ruff-harness.toml" in ci_runs, (
+        "CI lints the harness with a different configuration from `make harness` — the two "
+        "would then disagree about what clean means"
+    )
+
+
+def test_the_harness_tool_versions_have_one_source():
+    """Two pins for the same tool drift, and then 'clean' means two different things."""
+    ci_runs = "\n".join(s.get("run", "") for s in _workflow(CI)["jobs"]["static"]["steps"])
+    installs = [
+        line.strip()
+        for line in ci_runs.splitlines()
+        if "pip install" in line and ("ruff" in line or "black" in line)
+    ]
+    assert installs, "CI does not install the harness tools"
+    for line in installs:
+        assert "requirements-dev.txt" in line, (
+            f"the harness tools must be constrained by the file that already pins them for "
+            f"`make backend`, not pinned a second time: {line}"
+        )

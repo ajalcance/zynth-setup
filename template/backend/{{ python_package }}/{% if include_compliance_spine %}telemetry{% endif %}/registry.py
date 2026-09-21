@@ -24,7 +24,7 @@ EXEMPT: frozenset[tuple[str, str]] = frozenset(
 
 # Actions REPORTED BY A CLIENT rather than observed by this service. They are ordinary events —
 # queryable, alertable, retained — but they may never enter the tamper-evident audit chain, and
-# the coverage guards fail if one is listed as auditable. See docs/decisions/0011.
+# the coverage guards fail if one is listed as auditable. See docs/decisions/0012.
 CLIENT_ACTIONS: frozenset[str] = frozenset(
     {
         "client.error",

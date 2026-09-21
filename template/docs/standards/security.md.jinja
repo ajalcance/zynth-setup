@@ -53,3 +53,8 @@ enforces a rule, and is empty when nothing does.
 | SEC-042 | Thresholds and scanner exemption lists move in the tightening direction freely; loosening one needs an owner-approved label and a stated reason. | `[CI]` | `scripts/meta_guard.py` |
 | SEC-043 | A change to a sensitive path — migrations, the auth layer, the audit chain — needs owner approval; its blast radius outlives the PR. | `[CI]` | `scripts/meta_guard.py` |
 | SEC-044 | An override label is exceptional evidence, not a routine way to make CI green. A blocked change fixes its cause first. | `[Review]` | — |
+| SEC-045 | Every guard has a fault test proving it can fail, and something that actually invokes it. A guard nothing runs is documentation. | `[CI]` | `scripts/check_guard_coverage.py` |
+| SEC-046 | No source file contains a bidirectional, zero-width or invisible formatting character. Code must not read differently from how it runs. | `[CI]` | `scripts/check_unicode_hazards.py` |
+| SEC-047 | The programs that decide whether a change is safe are pinned, and changing one needs owner approval. An escape hatch must never be wider than the gate it escapes. | `[CI]` | `requirements-ci.txt` |
+| SEC-048 | A required status check names the app allowed to post it. Matched by name alone, any pull request can declare a job of that name and satisfy the gate. | `[CI]` | `tests/guards/test_workflow_invariants.py` |
+| SEC-049 | Dependency proposals wait out a cooldown before they can be merged automatically. Encode the premise an argument rests on. | `[CI]` | `tests/guards/test_workflow_invariants.py` |

@@ -49,7 +49,7 @@ async def test_example_route_emits_ingestable_event(
 async def test_a_client_reported_event_is_never_sealed(
     fake_redis: FakeRedis, session: AsyncSession
 ) -> None:
-    """The runtime half of the trust boundary (docs/decisions/0011).
+    """The runtime half of the trust boundary (docs/decisions/0012).
 
     The static guard in test_coverage_guards.py stops a client action being *registered* as
     auditable. This proves the sealing query itself refuses one — so a mistake in the registry
@@ -86,7 +86,7 @@ async def test_a_server_observed_event_with_the_same_action_is_sealed(
 async def test_the_emitter_overwrites_attribution_on_client_sourced_events(
     fake_redis: FakeRedis,
 ) -> None:
-    """For source=client the emitter enforces attribution itself (ADR-0011).
+    """For source=client the emitter enforces attribution itself (ADR-0012).
 
     The route is careful to pass no actor fields, but the guarantee must not depend on every
     future call site remembering that — a spoofed actor on a client-sourced event is overwritten

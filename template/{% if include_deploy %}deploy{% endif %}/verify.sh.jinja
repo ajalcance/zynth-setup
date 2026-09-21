@@ -1,33 +1,110 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Verify container images before deploying — FAIL-CLOSED. Only images this repo's
-# release workflow built and signed (cosign keyless / OIDC) will pass, so an
-# unsigned or tampered image never runs. See docs/decisions/0004.
+# Verify a release before deploying it — FAIL-CLOSED. Two things are checked, and
+# neither can be satisfied by anything this repo's release workflow did not produce:
 #
-#   ./verify.sh "$BACKEND_IMAGE" ["$FRONTEND_IMAGE" ...]
+#   1. the signed EVIDENCE for the tag, which names the exact digests and carries
+#      the production-readiness verdict for the tree those bytes were built from;
+#   2. the signature on each image, keyless via cosign/OIDC.
 #
-# Pass image refs by DIGEST (ghcr.io/owner/repo-backend@sha256:...). The deploy host
-# needs cosign: https://docs.sigstore.dev/cosign/system_config/installation
+#   ./verify.sh --tag v1.2.3 [--evidence release-evidence.json]
+#
+# The evidence is REQUIRED. A readiness scan run here would describe whatever this
+# host last pulled, not the release — and a check against the wrong tree is worse
+# than none, because it looks like a control. So the verdict travels inside the
+# signed document instead, and this script reads it from there.
+#
+# Fetch the evidence for a tag with:
+#   gh release download v1.2.3 --pattern 'release-evidence.*'
+#
+# The deploy host needs cosign and python3.
+# https://docs.sigstore.dev/cosign/system_config/installation
+# See docs/decisions/0004 and docs/decisions/0011.
 # ==============================================================================
 set -euo pipefail
 
 # The signing identity is this repo's release workflow (case-insensitive slug match).
-IDENTITY='(?i)^https://github.com/{{ github_owner }}/{{ github_repo }}/\.github/workflows/release\.yml@refs/'
+# `@refs/tags/v`, not merely `@refs/`. release.yml also runs on workflow_dispatch, where
+# the certificate records `@refs/heads/<branch>` — the looser pattern accepts a genuine
+# signature for the wrong thing. Pin the trigger, not just the workflow.
+IDENTITY='(?i)^https://github.com/{{ github_owner }}/{{ github_repo }}/\.github/workflows/release\.yml@refs/tags/v'
 ISSUER='https://token.actions.githubusercontent.com'
 
-command -v cosign >/dev/null 2>&1 || {
-  echo "error: cosign not installed — https://docs.sigstore.dev/cosign/system_config/installation" >&2
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+evidence="release-evidence.json"
+tag=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --tag) tag="${2:-}"; shift 2 ;;
+    --evidence) evidence="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,22p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "error: unexpected argument '$1'" >&2; exit 1 ;;
+  esac
+done
+
+[ -n "$tag" ] || { echo "usage: ./verify.sh --tag v1.2.3 [--evidence FILE]" >&2; exit 1; }
+
+for tool in cosign python3; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "error: $tool not installed — this script cannot verify without it" >&2
+    exit 1
+  }
+done
+
+[ -f "$evidence" ] || {
+  echo "error: $evidence not found. The release evidence is required, not optional:" >&2
+  echo "  gh release download $tag --pattern 'release-evidence.*'" >&2
   exit 1
 }
-[ "$#" -ge 1 ] || { echo "usage: ./verify.sh <image-ref> [<image-ref> ...]" >&2; exit 1; }
+[ -f "${evidence%.json}.bundle" ] || {
+  echo "error: ${evidence%.json}.bundle not found — the evidence signature is missing," >&2
+  echo "  so this document proves nothing. Download both files together." >&2
+  exit 1
+}
 
-for img in "$@"; do
+echo "Verifying the evidence signature"
+cosign verify-blob \
+  --bundle "${evidence%.json}.bundle" \
+  --certificate-identity-regexp "$IDENTITY" \
+  --certificate-oidc-issuer "$ISSUER" \
+  "$evidence" >/dev/null
+echo "  ✓ signed by this repo's release workflow"
+
+# --expect-tag: a valid document from a DIFFERENT release passes every structural test.
+# --require-clean: reads the readiness verdict recorded at build time. A signed candidate
+# carries its own refusal — these bytes contain the stand-in, whatever main looks like now.
+echo "Verifying the evidence is for $tag and records a clean readiness verdict"
+python3 "$here/../scripts/release_evidence.py" --validate "$evidence" \
+  --expect-tag "$tag" --require-clean
+
+# Images come from the evidence, never from the command line: an operator who types a digest
+# by hand can type one the evidence does not mention, and then the checks above covered a
+# different artifact from the one about to run.
+#
+# NOTE for template maintainers: this file is rendered by Jinja, where `{` followed by `#`
+# opens a comment. The shell's array-length form collides with it exactly, so count with a
+# variable instead. Same class as never interpolating a value into a linted line.
+verified=0
+python3 "$here/../scripts/release_evidence.py" --list images "$evidence" > .verify-images.txt
+trap 'rm -f .verify-images.txt' EXIT
+
+while read -r img; do
+  [ -n "$img" ] || continue
   echo "Verifying signature: $img"
   cosign verify "$img" \
     --certificate-identity-regexp "$IDENTITY" \
     --certificate-oidc-issuer "$ISSUER" >/dev/null
   echo "  ✓ signed by this repo's release workflow"
-done
+  verified=$((verified + 1))
+done < .verify-images.txt
 
-echo "All images verified. Deploy the base stack (no build override):"
+[ "$verified" -ge 1 ] || {
+  echo "error: the evidence records no images — nothing was verified" >&2
+  exit 1
+}
+
+echo
+echo "Verified $tag: evidence signed, readiness clean, $verified image(s) signed."
+echo "Deploy the base stack (no build override):"
 echo "  docker compose -f docker-compose.yml --env-file ../.env up -d"

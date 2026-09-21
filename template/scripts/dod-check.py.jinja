@@ -3,7 +3,7 @@
 
 Five mechanical checks that catch documentation drift:
 
-1. **As-built coverage** — every module directory under ``backend/{{ python_package }}/``, every
+1. **As-built coverage** — every module directory under the backend package, every
    directory under ``frontend/`` (when that module is enabled), and every top-level project
    directory must be named in ``docs/architecture/current-state.md``. Ship a component,
    mention it, or this fails.
@@ -29,6 +29,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# The ONLY interpolation in this file, and it stays on a line short enough that no package
+# name can overflow it. `make harness` lints this script AFTER rendering, so a copier value
+# on a prose line makes the gate pass for a short name and fail for a long one — which is
+# how a generated project goes red on day one for one adopter and nobody else.
 APP_PKG = "{{ python_package }}"
 ARCH = ROOT / "docs" / "architecture" / "current-state.md"
 
@@ -80,7 +84,7 @@ def check_as_built(errors: list[str]) -> None:
 
 
 def check_frontend_as_built(errors: list[str]) -> None:
-    """Same freshness rule as backend/{{ python_package }}/, applied to frontend/.
+    """Same freshness rule as the backend package, applied to frontend/.
 
     Without this, only a wholesale removal of ``frontend/`` was caught (it is a top-level dir);
     new panels, hooks or lib splits inside it drifted from the as-built page by discipline
@@ -156,7 +160,8 @@ def check_lessons_ordering(errors: list[str]) -> None:
     dates = LESSON_DATE_RE.findall(lessons.read_text())
     if len(dates) < 2:
         return  # a fresh project has no entries to order
-    for newer, older in zip(dates, dates[1:]):
+    # strict=False is correct here and stated: dates[1:] is one shorter by construction.
+    for newer, older in zip(dates, dates[1:], strict=False):
         if newer < older:  # ISO dates compare correctly as strings
             errors.append(
                 f"docs/LESSONS.md is documented as newest-first but {newer} appears above "
@@ -208,8 +213,52 @@ def check_release_consistency(errors: list[str]) -> None:
             )
 
 
+def _denominator() -> dict[str, int]:
+    """What this run has to inspect, counted from the tree rather than assumed.
+
+    Printed on every run and checked below. Each of these checks walks a directory, and a
+    directory that has moved or been renamed makes the check silently vacuous — it finds
+    nothing to complain about and prints OK, which reads exactly like a healthy repository.
+    """
+    app = ROOT / "backend" / APP_PKG
+    frontend = ROOT / "frontend"
+    decisions = ROOT / "docs" / "decisions"
+    return {
+        "top-level dirs": sum(1 for d in TOP_LEVEL_DIRS if (ROOT / d).is_dir()),
+        "backend modules": (
+            sum(1 for s in app.iterdir() if s.is_dir() and not s.name.startswith("__"))
+            if app.is_dir()
+            else 0
+        ),
+        "frontend dirs": (
+            sum(
+                1
+                for s in frontend.iterdir()
+                if s.is_dir() and not s.name.startswith(".") and s.name not in FRONTEND_SKIP_DIRS
+            )
+            if frontend.is_dir()
+            else 0
+        ),
+        "ADRs": len(list(decisions.glob("*.md"))) if decisions.is_dir() else 0,
+    }
+
+
 def main() -> int:
     errors: list[str] = []
+    counts = _denominator()
+    summary = " · ".join(f"{value} {name}" for name, value in counts.items())
+    print(f"dod-check: inspected {summary}")
+    # The denominator rule (EXP-0001). The backend package is the one set that must never be
+    # empty: if APP_PKG has been renamed, every as-built assertion below walks an absent
+    # directory, finds nothing, and prints OK over a page that describes a different project.
+    if not counts["backend modules"] and not counts["top-level dirs"]:
+        print(
+            f"\ndod-check: FAILED — nothing was inspected. 'backend/{APP_PKG}/' and the\n"
+            f"top-level directory list are both empty, so every as-built check below would\n"
+            f"pass over an empty set. Update APP_PKG in this script after a package rename."
+        )
+        return 1
+
     check_as_built(errors)
     check_frontend_as_built(errors)
     check_stale_refs(errors)

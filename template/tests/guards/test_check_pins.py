@@ -178,7 +178,10 @@ def test_versions_are_compared_whole_not_by_prefix(tmp_path):
 
 
 def test_package_names_reconcile_case_and_separator_insensitively(tmp_path):
-    """PEP 503: Foo_Bar and foo-bar are one package, and a false mismatch trains people to ignore."""
+    """PEP 503: Foo_Bar and foo-bar are one package.
+
+    A false mismatch here trains people to ignore the guard.
+    """
     lock = _pair(
         tmp_path,
         "Foo_Bar==1.0\n",

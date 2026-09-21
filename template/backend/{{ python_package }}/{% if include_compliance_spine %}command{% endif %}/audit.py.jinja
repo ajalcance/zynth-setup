@@ -39,7 +39,7 @@ AUDITABLE_ACTIONS: frozenset[str] = frozenset(
 
 # Explicitly NOT audited. Two kinds live here: per-action judgement calls (high-volume,
 # low-value reads — add those by name), and EVERY client-reported action, included as a set
-# union because ADR-0011 makes that exemption invariant — a claim can never be evidence, so
+# union because ADR-0012 makes that exemption invariant — a claim can never be evidence, so
 # per-action "decisions" that must always come out the same way would be ceremony, and hand
 # mirroring them here is the drift the guards would then have to police.
 AUDIT_EXEMPT: frozenset[str] = frozenset() | CLIENT_ACTIONS

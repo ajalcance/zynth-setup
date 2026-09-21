@@ -41,10 +41,11 @@ cd /tmp/gen-demo/backend && python -m venv .venv && . .venv/bin/activate \
 Try variants too: a different `--data python_package=svc`, `--data license=MIT`, and the optional
 toggles once their payloads exist.
 
-**Before generating from a locally modified tree, run:**
+**Before generating from a locally modified tree, run both:**
 
 ```bash
 ./scripts/check-tracked-ignores.sh
+./scripts/check-jinja-syntax.sh
 ```
 
 Copier's dirty-repo flow re-stages the worktree against an empty index, so a tracked file
@@ -53,6 +54,14 @@ repo) is silently missing from every local generation — while CI, which genera
 checkout, stays green. This script is the same check CI runs (`template-test.yml`); it caught
 `.env.example.jinja` being dropped for weeks. If it fails, un-ignore or rename the file — never
 generate around it.
+
+`check-jinja-syntax.sh` parses every template body and every templated path. Copier reports a
+broken template as `TemplateSyntaxError: Missing end of comment tag` with no filename and a line
+number into the rendered stream, which sends you through 190 files by hand; this names the file
+and the line. The trap that motivated it: Jinja opens a comment on `{` immediately followed by
+`#`, and the shell's array-length form is exactly that — a valid shell script became an
+unterminated comment and generation failed for the whole template. Write a counter variable
+instead. Same family as never interpolating a copier value into a linted line.
 
 ## Add a new prompt
 

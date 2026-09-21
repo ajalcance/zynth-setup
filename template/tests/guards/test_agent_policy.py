@@ -13,7 +13,6 @@ import subprocess
 import sys
 
 import pytest
-
 from conftest import REPO_ROOT
 
 SETTINGS = REPO_ROOT / ".claude" / "settings.json"
@@ -154,3 +153,72 @@ def test_admin_flag_is_blocked_in_any_position(command):
 def test_ordinary_merge_is_still_allowed():
     """The positive control: the hook must not block the normal path."""
     assert _hook_verdict("gh pr merge --squash 5") == 0
+
+
+# --- The secret-write hook ---------------------------------------------------------------
+#
+# Added because scripts/check_guard_coverage.py found it: this hook shipped as a control,
+# was cited as a control, and nothing had ever demonstrated it could block anything.
+
+SECRET_HOOK = REPO_ROOT / ".claude" / "hooks" / "block_secret_write.py"
+
+secret_hook = pytest.mark.skipif(not SECRET_HOOK.is_file(), reason="hooks not enabled")
+
+
+def _write_verdict(file_path: str, content: str = "") -> int:
+    """Run the real PreToolUse hook against a Write payload; 2 means blocked."""
+    payload = json.dumps({"tool_input": {"file_path": file_path, "content": content}})
+    return subprocess.run(
+        [sys.executable, str(SECRET_HOOK)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    ).returncode
+
+
+@secret_hook
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repo/.env",
+        "/repo/.env.production",
+        "/repo/certs/server.pem",
+        "/repo/certs/server.key",
+        "/repo/.ssh/id_ed25519",
+        "/repo/.npmrc",
+    ],
+)
+def test_secret_material_is_blocked_on_write(path):
+    assert _write_verdict(path) == 2, f"a Write to {path} must be blocked, not allowed"
+
+
+@secret_hook
+def test_a_private_key_in_the_content_is_blocked_whatever_the_filename():
+    """The filename is the easy half; a key pasted into notes.txt is the interesting one."""
+    body = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n"
+    assert _write_verdict("/repo/docs/notes.txt", body) == 2
+
+
+@secret_hook
+@pytest.mark.parametrize("path", ["/repo/.env.example", "/repo/backend/app/main.py"])
+def test_ordinary_writes_are_not_blocked(path):
+    """The positive control. .env.example is the file the README tells adopters to copy."""
+    assert _write_verdict(path) == 0, f"{path} must not be blocked"
+
+
+@secret_hook
+def test_a_malformed_payload_does_not_halt_every_write():
+    """This hook fails OPEN by design: a bug in it must not brick the session.
+
+    Its backstops are gitleaks in pre-commit and the CI hygiene job, which do not fail open.
+    Recorded here so the direction is a decision somebody made, not an accident.
+    """
+    result = subprocess.run(
+        [sys.executable, str(SECRET_HOOK)],
+        input="not json",
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0

@@ -10,7 +10,6 @@ from __future__ import annotations
 import shutil
 
 import pytest
-
 from conftest import REPO_ROOT, SCRIPTS, install_guard, run_guard, write
 
 GUARD = SCRIPTS / "risk_context.py"
@@ -133,7 +132,10 @@ def test_a_pattern_key_of_the_wrong_shape_fails(tmp_path):
 
 
 def test_retrieval_is_advisory_and_never_fails(tmp_path):
-    """Retrieval must not gate: it is context, and context that blocks becomes noise to route around."""
+    """Retrieval must not gate.
+
+    It is context, and context that blocks becomes noise to route around.
+    """
     guard = _sandbox(tmp_path, "guard", "scripts/some_guard.py")
     shutil.rmtree(tmp_path / "experience")  # even with no registry at all
     result = run_guard(guard)

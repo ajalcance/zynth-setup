@@ -80,8 +80,11 @@ ACCEPTED_SHAPE = (
 NEW_TREE_RE = re.compile(r"^backend/(?!tests/|migrations/)(?P<pkg>[^/]+)/(?P<tree>[^/]+)/.+\.py$")
 
 
-class DiffUnavailable(RuntimeError):
-    """git could not produce a diff. Distinct from "the diff is empty" — see the module docstring."""
+class DiffUnavailableError(RuntimeError):
+    """git could not produce a diff.
+
+    Distinct from "the diff is empty" — see the module docstring.
+    """
 
 
 def _git(*args: str, base: str) -> str:
@@ -90,10 +93,11 @@ def _git(*args: str, base: str) -> str:
             ["git", *args], capture_output=True, text=True, check=False, timeout=60
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise DiffUnavailable(f"git {' '.join(args)} could not run — {exc}") from exc
+        raise DiffUnavailableError(f"git {' '.join(args)} could not run — {exc}") from exc
     if done.returncode != 0:
-        raise DiffUnavailable(
-            f"git {' '.join(args)} exited {done.returncode} — {done.stderr.strip() or 'no stderr'}.\n"
+        raise DiffUnavailableError(
+            f"git {' '.join(args)} exited {done.returncode} — "
+            f"{done.stderr.strip() or 'no stderr'}.\n"
             f"  The base ref {base!r} is probably missing from this checkout: a shallow clone has\n"
             f"  no merge base. Fetch it (actions/checkout with fetch-depth: 0) and re-run."
         )
@@ -101,7 +105,7 @@ def _git(*args: str, base: str) -> str:
 
 
 def changed_files(base: str) -> list[str]:
-    """Paths in the diff. Raises DiffUnavailable rather than reporting an empty diff."""
+    """Paths in the diff. Raises DiffUnavailableError rather than reporting an empty diff."""
     return [
         line
         for line in _git("diff", "--name-only", f"{base}...HEAD", base=base).splitlines()
@@ -221,7 +225,7 @@ def main() -> int:
     try:
         changed = changed_files(args.base)
         new_trees = new_package_trees(args.base)
-    except DiffUnavailable as exc:
+    except DiffUnavailableError as exc:
         print("pr-declaration: FAILED — the diff could not be read, so nothing was checked\n")
         print(f"  ✗ {exc}")
         print(

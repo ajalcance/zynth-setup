@@ -20,7 +20,9 @@ import sys
 # (compiled pattern, human reason). Kept deliberately narrow.
 RULES: list[tuple[re.Pattern[str], str]] = [
     (
-        re.compile(r"\bgit\s+push\b(?=.*\b(?:--force|--force-with-lease|-f)\b)(?=.*\b(?:main|master)\b)"),
+        re.compile(
+            r"\bgit\s+push\b(?=.*\b(?:--force|--force-with-lease|-f)\b)(?=.*\b(?:main|master)\b)"
+        ),
         "force-push to a protected branch (main/master) rewrites shared history.",
     ),
     (
@@ -32,8 +34,10 @@ RULES: list[tuple[re.Pattern[str], str]] = [
         "--no-verify skips the pre-commit / commit-msg hooks (gitleaks, hygiene).",
     ),
     (
-        re.compile(r"\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|-r\s+-f|-f\s+-r)\b"
-                   r".*(?:\s/(?:\s|$)|\s~(?:/|\s|$)|\$HOME|\s\*(?:\s|$)|\s\.(?:\s|$))"),
+        re.compile(
+            r"\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|-r\s+-f|-f\s+-r)\b"
+            r".*(?:\s/(?:\s|$)|\s~(?:/|\s|$)|\$HOME|\s\*(?:\s|$)|\s\.(?:\s|$))"
+        ),
         "recursive force-delete targeting a dangerous root (/, ~, $HOME, ., *).",
     ),
     (

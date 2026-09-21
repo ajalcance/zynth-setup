@@ -49,7 +49,7 @@ class Telemetry:
         the event actor unless the caller overrides it — EXCEPT for client-sourced events.
         For ``source=SOURCE_CLIENT`` the attribution fields are **overwritten** from the
         verified request, never merely defaulted: a client-reported event whose actor came from
-        anywhere but the verified principal is exactly the falsehood ADR-0011 exists to prevent,
+        anywhere but the verified principal is exactly the falsehood ADR-0012 exists to prevent,
         and enforcing it here means every call site gets the guarantee, not just the ones that
         remember the rule.
         """

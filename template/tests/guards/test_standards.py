@@ -12,7 +12,6 @@ import re
 import shutil
 
 import pytest
-
 from conftest import REPO_ROOT, SCRIPTS, install_guard, run_guard, write
 
 GUARD = SCRIPTS / "standards_check.py"

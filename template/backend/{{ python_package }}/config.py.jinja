@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # a trusted reverse proxy (the deploy module's Caddy) fronts the service; the recorded
     # client IP then comes from the hop the proxy appended, never one the caller supplied.
     # Default False = fail closed: without a proxy, the peer address is the only IP the server
-    # itself observed. See telemetry/envelope.py:client_ip and ADR-0011.
+    # itself observed. See telemetry/envelope.py:client_ip and ADR-0012.
     trust_x_forwarded_for: bool = False
 {%- endif %}
 
