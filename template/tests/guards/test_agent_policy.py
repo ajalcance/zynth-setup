@@ -18,7 +18,10 @@ from conftest import REPO_ROOT
 
 SETTINGS = REPO_ROOT / ".claude" / "settings.json"
 HOOK = REPO_ROOT / ".claude" / "hooks" / "block_dangerous_bash.py"
-RULE_RE = re.compile(r"^(Bash|Read|Edit|Write|WebFetch|Glob|Grep)\(.+\)$")
+RULE_RE = re.compile(r"^(Bash|Read|Edit|Write|MultiEdit|NotebookEdit|WebFetch|Glob|Grep)\(.+\)$")
+# Every tool that can put bytes on disk. A rule written for Edit alone leaves Write open,
+# and a protected path an agent can Write is not protected.
+WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 
 pytestmark = pytest.mark.skipif(
     not SETTINGS.is_file(), reason="the Claude Code agent policy is not enabled in this project"
@@ -58,8 +61,49 @@ def test_env_example_stays_readable():
 
 def test_policy_and_guard_files_require_confirmation():
     ask = " ".join(_permissions()["ask"])
-    for path in ("./.claude/**", "./.github/**", "./scripts/**", "./CLAUDE.md"):
+    for path in (
+        "./.claude/**",
+        "./.github/**",
+        "./scripts/**",
+        "./CLAUDE.md",
+        "./docs/decisions/**",
+    ):
         assert f"Edit({path})" in ask, f"edits to {path} must prompt — the agent gates itself"
+
+
+def test_every_protected_path_is_protected_against_every_write_tool():
+    """A rule written for Edit only does not stop a Write, and Write overwrites the file whole.
+
+    Trivially exploitable, trivially fixed, and exactly the kind of thing a template should
+    get right once for everyone.
+    """
+    ask = _permissions()["ask"]
+    paths = {rule[len("Edit(") : -1] for rule in ask if rule.startswith("Edit(")}
+    assert paths, "no protected paths found — this assertion would otherwise be vacuous"
+    missing = [
+        f"{tool}({path})"
+        for path in sorted(paths)
+        for tool in WRITE_TOOLS
+        if f"{tool}({path})" not in ask
+    ]
+    assert not missing, (
+        "protected paths with a gap — an agent can reach them with another write tool: "
+        + ", ".join(missing)
+    )
+
+
+def test_an_adr_cannot_be_written_without_a_prompt():
+    """ADRs outrank docs/PLAN.md in the source-of-truth order (CLAUDE.md §0).
+
+    A broad `docs/**` allowance waived the prompt, leaving the one record that outranks the
+    roadmap the only one an agent could write with nobody in the loop.
+    """
+    ask = _permissions()["ask"]
+    for tool in WRITE_TOOLS:
+        assert f"{tool}(./docs/decisions/**)" in ask, (
+            f"a {tool} to an ADR must prompt: a decision record an agent writes unreviewed "
+            f"silently overrules the roadmap"
+        )
 
 
 def test_settings_gate_edits_to_themselves():

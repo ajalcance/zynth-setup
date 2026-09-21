@@ -7,6 +7,7 @@ during development — this is that check, automated.
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -15,6 +16,11 @@ import yaml
 from conftest import REPO_ROOT
 
 CI = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+RULESET = REPO_ROOT / ".github" / "rulesets" / "main.json"
+# GitHub Actions' own GitHub App. A required check bound to this id can only be posted by
+# Actions — which is what stops a pull request declaring a job of the same name and
+# satisfying the gate itself.
+GITHUB_ACTIONS_APP_ID = 15368
 
 
 def _workflow(path):
@@ -164,3 +170,55 @@ def test_promotion_verifies_the_evidence_belongs_to_this_release():
     assert "cosign verify-blob" in steps, "the evidence signature must be verified"
     assert "--expect-tag" in steps, "the evidence must be checked against the tag being promoted"
     assert "cosign verify " in steps, "every image digest must be verified before promotion"
+
+
+# --- The merge gate must not be forgeable by the thing it gates -------------------------
+
+
+def _ruleset() -> dict:
+    return json.loads(RULESET.read_text())
+
+
+def _required_checks() -> list[dict]:
+    rules = [r for r in _ruleset()["rules"] if r["type"] == "required_status_checks"]
+    assert rules, "the ruleset declares no required status checks at all"
+    return rules[0]["parameters"]["required_status_checks"]
+
+
+def test_every_required_check_names_the_app_that_may_post_it():
+    """Matched by name only, the one required check was forgeable by any pull request.
+
+    A PR could add a workflow declaring a job called `ci-complete`; that job posts a check of
+    that name, and the merge gate is satisfied without CI ever running. `integration_id` binds
+    the context to GitHub Actions, so a status from anything else does not count.
+    """
+    checks = _required_checks()
+    assert checks, "no required status check — this assertion would otherwise be vacuous"
+    unbound = [c["context"] for c in checks if c.get("integration_id") != GITHUB_ACTIONS_APP_ID]
+    assert not unbound, (
+        f"required check(s) matched by name alone, so any PR can forge them: {unbound}. "
+        f'Add "integration_id": {GITHUB_ACTIONS_APP_ID}.'
+    )
+
+
+def test_the_required_check_is_a_job_this_repository_actually_runs():
+    """A required context nothing posts blocks every PR forever; the wrong one blocks nothing."""
+    contexts = {c["context"] for c in _required_checks()}
+    jobs = set(_workflow(CI)["jobs"])
+    assert contexts <= jobs, f"required check(s) with no matching CI job: {sorted(contexts - jobs)}"
+
+
+def test_nobody_may_bypass_the_ruleset():
+    """Stated explicitly rather than left absent — an empty list is a decision, a gap is not."""
+    actors = _ruleset().get("bypass_actors")
+    assert actors == [], f"the ruleset grants bypass to {actors!r}"
+
+
+def test_a_merge_cannot_reintroduce_unreviewed_history():
+    rules = {r["type"] for r in _ruleset()["rules"]}
+    for required in ("deletion", "non_fast_forward", "required_linear_history", "pull_request"):
+        assert required in rules, f"the ruleset is missing the '{required}' rule"
+    pull_request = [r for r in _ruleset()["rules"] if r["type"] == "pull_request"][0]["parameters"]
+    assert pull_request.get("allowed_merge_methods") == [
+        "squash"
+    ], "linear history plus an unrestricted merge method lets a merge commit through"

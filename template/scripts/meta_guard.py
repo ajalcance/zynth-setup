@@ -8,7 +8,9 @@ Five diff-based checks against the PR's base branch (no stored baseline to tampe
    ``eslint-disable``, ``@ts-ignore``, ``@ts-nocheck``). Removing them is always fine.
    Scoped to source files (``.py``/``.ts``/``.tsx``/``.js``/``.jsx``, excluding ``docs/``)
    so that *documenting* a marker — an ADR explaining why blanket-disabling is banned —
-   is not counted the same as *adding* one.
+   is not counted the same as *adding* one. This script and its own fault tests are excluded
+   by name (``SELF_REFERENTIAL``): a marker-detecting guard must contain every marker it
+   matches on, so counting them destroys the signal it exists to produce.
 2. **Test presence** — if package source changed, a test must have changed too
    (catches "delete/hollow the tests so coverage/pytest pass").
 3. **Guard-file change** — the PR must not touch a file that DEFINES a guard (this script,
@@ -54,6 +56,18 @@ BYPASS_MARKERS = (
 )
 _MARKER_RE = re.compile("|".join(BYPASS_MARKERS))
 
+# The two files that cannot avoid containing markers: a marker-detecting guard has to hold
+# every marker it matches on, and its fault tests have to contain example suppressions to
+# prove detection works. Counting them buries the real suppressions in noise and asks the
+# owner to apply 'allow-suppressions' for the guard testing itself — and a label applied
+# routinely stops being a signal, which is the whole argument for the ratchet.
+#
+# Two named FILES, never their directories. Exempting scripts/ or tests/guards/ wholesale
+# would let a real suppression into any other guard go uncounted, which is the hole the
+# ratchet exists to close. This removes no human checkpoint: both files are already matched
+# by GUARD_FILE_RE, so every change to either needs the owner's label whatever the count says.
+SELF_REFERENTIAL = frozenset({"scripts/meta_guard.py", "tests/guards/test_meta_guard.py"})
+
 # Only real source files can carry a real suppression directive. Prose that merely NAMES a
 # marker (docs, ADRs, markdown) must not count — see check_suppressions().
 SUPPRESSIBLE_RE = re.compile(r"^(?!docs/).*\.(py|ts|tsx|js|jsx|mjs|cjs)$")
@@ -76,6 +90,11 @@ GUARD_FILE_RE = re.compile(
     # Promoting a lesson up the enforcement ladder IS a policy change: an agent may recommend
     # one, but turning its own advice into policy is the owner's call.
     r"|^experience/registry\.toml$"
+    # An ADR outranks docs/PLAN.md in this project's own source-of-truth order (CLAUDE.md §0),
+    # so a decision record an agent writes unreviewed silently overrules the roadmap. A broad
+    # `docs/**` scope waives the keystroke prompt, which left this the one record that outranks
+    # everything and was gated by nothing.
+    r"|^docs/decisions/.*\.md$"
 )
 
 
@@ -83,9 +102,9 @@ GUARD_FILE_RE = re.compile(
 # excluded because Dependabot touches them constantly, and a label everyone applies weekly
 # stops being a signal. Those are already covered by check_pins + CODEOWNERS review.
 SENSITIVE_PATH_RE = re.compile(
-    r"^backend/migrations/versions/.*\.py$"   # irreversible: rewrites stored data
-    r"|^backend/[^/]+/auth/"                  # who can reach what
-    r"|^backend/[^/]+/command/audit\.py$"     # the tamper-evident chain itself
+    r"^backend/migrations/versions/.*\.py$"  # irreversible: rewrites stored data
+    r"|^backend/[^/]+/auth/"  # who can reach what
+    r"|^backend/[^/]+/command/audit\.py$"  # the tamper-evident chain itself
 )
 
 # Config files that can exempt code from a scanner — the suppression ratchet's blind spot.
@@ -125,7 +144,7 @@ def check_suppressions(base: str, errors: list[str]) -> None:
             continue
         if line.startswith("---") or line.startswith("diff ") or line.startswith("@@"):
             continue
-        if not SUPPRESSIBLE_RE.match(current_file):
+        if not SUPPRESSIBLE_RE.match(current_file) or current_file in SELF_REFERENTIAL:
             continue
         if line.startswith("+") and _MARKER_RE.search(line):
             added += 1

@@ -16,11 +16,24 @@
 
 <!--
 REQUIRED and machine-checked by scripts/pr_declaration.py against the actual diff.
-Answer each line with exactly `updated` OR `N/A: <concrete reason>`.
+
+The two accepted shapes, exactly as the parser reads them — one record per line:
+
+    - PLAN: updated
+    - PLAN: N/A: no roadmap movement, this is a one-file bug fix
+
+A colon, hyphen, en dash or em dash all work as the separator, and a reason that soft-wraps
+onto the following indented lines is rejoined before parsing.
 
 The placeholders below deliberately FAIL until you replace them — a pre-ticked box proves
-nothing. A claim of `updated` must be true (the file must appear in the diff), and a record the
-diff *does* touch cannot be declared N/A.
+nothing. Four further rules the guard enforces:
+
+  * `updated` must be true: the file has to appear in the diff;
+  * the change has to be REAL — PLAN and LESSONS need a dated heading or a few lines of prose,
+    everything else needs more than a whitespace edit;
+  * a record the diff *does* touch cannot be declared N/A;
+  * `ADR: N/A` is refused outright when the diff adds a new module tree under the backend
+    package. A new subsystem is a design decision.
 -->
 
 - PLAN: <updated | N/A: reason>

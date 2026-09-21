@@ -86,6 +86,52 @@ def test_duplicate_ids_fail(tmp_path):
     assert result.returncode != 0, "reused ids break citation — they must fail"
 
 
+# --- Fail-closed: the three ways to erase the registry ----------------------------------
+#
+# One test per branch, each asserting its OWN marker string. Two failure modes that produce
+# the same exit code need two different messages, or a test is satisfied by the wrong branch:
+# the missing-file assertion below passed against the empty-registry branch until it asserted
+# a marker only the missing-file branch prints. See EXP-0001.
+
+
+def test_a_missing_registry_fails_validation(tmp_path):
+    """Deleting the file must not be the cheapest way to pass every claim that cites it."""
+    guard = install_guard(tmp_path, "risk_context.py")  # no experience/ at all
+    result = run_guard(guard, "--validate")
+    assert result.returncode != 0, "a missing registry must fail --validate, not pass it"
+    assert "experience/registry.toml does not exist" in result.stdout, result.stdout
+
+
+def test_an_empty_registry_fails_validation_with_its_own_message(tmp_path):
+    """Emptying the file erases exactly as much as deleting it, and must say so distinctly."""
+    guard = install_guard(tmp_path, "risk_context.py")
+    write(tmp_path / "experience" / "registry.toml", "schema_version = 1\n")
+    result = run_guard(guard, "--validate")
+    assert result.returncode != 0, "a registry with no patterns must fail --validate"
+    assert "declares no pattern" in result.stdout, result.stdout
+    assert "does not exist" not in result.stdout, (
+        "the empty-registry branch must not print the missing-file marker, or a test of one "
+        "is satisfied by the other"
+    )
+
+
+def test_an_unparseable_registry_is_not_read_as_an_empty_one(tmp_path):
+    guard = install_guard(tmp_path, "risk_context.py")
+    write(tmp_path / "experience" / "registry.toml", "[[pattern]\nid = broken\n")
+    result = run_guard(guard, "--validate")
+    assert result.returncode != 0, "unparseable TOML must fail, not validate as zero patterns"
+    assert "cannot be read as TOML" in result.stdout, result.stdout
+
+
+def test_a_pattern_key_of_the_wrong_shape_fails(tmp_path):
+    """`pattern = []` parses fine as TOML and yields no entries — that is the trap."""
+    guard = install_guard(tmp_path, "risk_context.py")
+    write(tmp_path / "experience" / "registry.toml", 'schema_version = 1\npattern = "none"\n')
+    result = run_guard(guard, "--validate")
+    assert result.returncode != 0, "a non-table 'pattern' key must fail"
+    assert "array of tables" in result.stdout, result.stdout
+
+
 def test_retrieval_is_advisory_and_never_fails(tmp_path):
     """Retrieval must not gate: it is context, and context that blocks becomes noise to route around."""
     guard = _sandbox(tmp_path, "guard", "scripts/some_guard.py")

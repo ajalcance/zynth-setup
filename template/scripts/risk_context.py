@@ -29,6 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "experience" / "registry.toml"
+REGISTRY_REL = "experience/registry.toml"
 
 # The enforcement ladder, weakest first. See experience/README.md.
 LADDER = ("reference", "context", "checklist", "guard", "production_blocker")
@@ -36,18 +37,46 @@ NEEDS_MECHANISM = {"guard", "production_blocker"}
 RULE = "─" * 78
 
 
+class RegistryError(Exception):
+    """The registry file exists but cannot be read as a registry.
+
+    Distinct from "absent" and from "empty" on purpose. A malformed registry read as an empty
+    one is the cheapest possible way to silence every claim that cites it (EXP-0001) — so the
+    three states carry three different messages, and ``--validate`` refuses two of them.
+    """
+
+
 def load() -> list[dict]:
+    """Registry patterns, or [] when the file is absent. Raises RegistryError if unreadable.
+
+    Absent and empty are *both* returned as [] here — they are distinguished by the caller,
+    because retrieval tolerates both and validation refuses both for different reasons.
+    """
     if not REGISTRY.is_file():
         return []
-    with REGISTRY.open("rb") as handle:
-        return tomllib.load(handle).get("pattern", [])
+    try:
+        with REGISTRY.open("rb") as handle:
+            document = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise RegistryError(f"{REGISTRY_REL} cannot be read as TOML — {exc}") from exc
+    patterns = document.get("pattern", [])
+    if not isinstance(patterns, list) or any(not isinstance(entry, dict) for entry in patterns):
+        raise RegistryError(
+            f"{REGISTRY_REL}: 'pattern' must be an array of tables ([[pattern]]) — "
+            f"a malformed registry must not be read as an empty one"
+        )
+    return patterns
 
 
 def _has_commits() -> bool:
     return (
         subprocess.run(
             ["git", "rev-parse", "--verify", "HEAD"],
-            cwd=ROOT, capture_output=True, text=True, check=False, timeout=30,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
         ).returncode
         == 0
     )
@@ -63,14 +92,22 @@ def changed_files(base: str | None) -> list[str]:
         return sorted(
             line
             for line in subprocess.run(
-                ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=False, timeout=60
+                ["git", "ls-files"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
             ).stdout.splitlines()
             if line
         )
     commands = (
         [["git", "diff", "--name-only", f"{base}...HEAD"]]
         if base
-        else [["git", "diff", "--name-only", "HEAD"], ["git", "ls-files", "--others", "--exclude-standard"]]
+        else [
+            ["git", "diff", "--name-only", "HEAD"],
+            ["git", "ls-files", "--others", "--exclude-standard"],
+        ]
     )
     files: list[str] = []
     for command in commands:
@@ -89,16 +126,41 @@ def matches(pattern: dict, files: list[str]) -> list[str]:
     for glob in pattern.get("paths", []):
         for path in files:
             # fnmatch's "*" crosses "/", so "**" and "*" both behave as a broad match here.
-            if fnmatch.fnmatch(path, glob) or (glob.endswith("/**") and path.startswith(glob[:-3] + "/")):
+            if fnmatch.fnmatch(path, glob) or (
+                glob.endswith("/**") and path.startswith(glob[:-3] + "/")
+            ):
                 hits.append(path)
     return sorted(set(hits))
 
 
 def validate() -> int:
-    patterns = load()
+    """Blocking registry integrity check. Fails closed — see EXP-0001.
+
+    An absent registry, an empty one and an unreadable one each fail with their OWN message.
+    They are three different ways to erase every enforcement claim that cites the registry,
+    and a single shared message lets a test pass against the wrong branch.
+    """
+    if not REGISTRY.is_file():
+        print(
+            f"risk-context: FAILED — {REGISTRY_REL} does not exist.\n\n"
+            "  Every enforcement claim citing a pattern id is unverifiable without it, so\n"
+            "  deleting the file would otherwise be the cheapest way to pass this gate.\n"
+            "  Restore it from git history, or from the template if this is a fresh project."
+        )
+        return 1
+    try:
+        patterns = load()
+    except RegistryError as exc:
+        print(f"risk-context: FAILED — {exc}")
+        return 1
     if not patterns:
-        print("risk-context: no experience/registry.toml — nothing to validate.")
-        return 0
+        print(
+            f"risk-context: FAILED — {REGISTRY_REL} declares no pattern.\n\n"
+            "  An empty registry erases the recorded failure patterns exactly as deleting the\n"
+            "  file would. If a pattern no longer applies, say so in its entry — do not remove\n"
+            "  the last one."
+        )
+        return 1
 
     errors: list[str] = []
     seen: set[str] = set()
@@ -141,18 +203,28 @@ def validate() -> int:
         )
         return 1
 
-    ladder_counts = {rung: sum(1 for e in patterns if e.get("enforcement") == rung) for rung in LADDER}
+    ladder_counts = {
+        rung: sum(1 for e in patterns if e.get("enforcement") == rung) for rung in LADDER
+    }
     summary = " · ".join(f"{rung}:{count}" for rung, count in ladder_counts.items() if count)
     print(f"risk-context: OK — {len(patterns)} pattern(s) validated ({summary}).")
     return 0
 
 
 def retrieve(base: str | None) -> int:
-    patterns = load()
+    # Retrieval is advisory and always exits 0, so a broken registry degrades to "no patterns"
+    # here rather than blocking work. --validate is the blocking read of the same file.
+    try:
+        patterns = load()
+    except RegistryError as exc:
+        print(f"  (registry unreadable — {exc}; run `--validate` for the blocking check)")
+        patterns = []
     files = changed_files(base)
 
     print(RULE)
-    print(f"  RISK CONTEXT — {len(files)} changed file(s) matched against {len(patterns)} pattern(s)")
+    print(
+        f"  RISK CONTEXT — {len(files)} changed file(s) matched against {len(patterns)} pattern(s)"
+    )
     print("  Advisory only. Never overrides code, tests, ADRs or live settings.")
     print(RULE)
 
@@ -169,7 +241,9 @@ def retrieve(base: str | None) -> int:
         return 0
 
     # Strongest rung first: the ones that can actually block you are worth reading first.
-    applicable.sort(key=lambda pair: LADDER.index(pair[0].get("enforcement", "reference")), reverse=True)
+    applicable.sort(
+        key=lambda pair: LADDER.index(pair[0].get("enforcement", "reference")), reverse=True
+    )
 
     for entry, hits in applicable:
         rung = entry.get("enforcement", "reference")
@@ -189,8 +263,12 @@ def retrieve(base: str | None) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--validate", action="store_true", help="check registry integrity (blocking)")
-    parser.add_argument("--base", default=None, help="diff against this ref instead of the worktree")
+    parser.add_argument(
+        "--validate", action="store_true", help="check registry integrity (blocking)"
+    )
+    parser.add_argument(
+        "--base", default=None, help="diff against this ref instead of the worktree"
+    )
     args = parser.parse_args()
     return validate() if args.validate else retrieve(args.base)
 
