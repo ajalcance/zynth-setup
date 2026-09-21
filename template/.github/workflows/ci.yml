@@ -15,15 +15,28 @@ name: CI
 # not job duration. A PR run and the push run that follows the merge test the same tree, so
 # `push` is limited to the default branch (post-merge verification); PRs are gated by the
 # pull_request run. This roughly halves total runs.
+# `types:` is load-bearing, not boilerplate. The meta-guard reads the owner's labels from the
+# event payload and the declaration guard reads the PR body the same way — and a re-run replays
+# the ORIGINAL payload. Without `labeled`/`edited`, a label applied after the run and a body
+# written after the run never took effect, while the check that appeared green had evaluated
+# the absent labels and the empty body.
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
   push:
     branches: [main]
 
+# Cancel a superseded PR run; never cancel a run on the default branch. A cancelled run reports
+# a non-success result, so cancelling on `push` lets a main commit carry a cancelled gate — and
+# that is the tree a release tag is cut from.
+#
+# Consequence worth knowing: applying a label fires a new run that cancels the current one, so a
+# check rollup shows a FAILURE from the cancelled run beside the live one. Evaluate checks by
+# completion time, not by presence.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -33,6 +46,7 @@ jobs:
   # ---- Detect which parts of the repo changed -----------------------------
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -40,7 +54,15 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       changelog: ${{ steps.filter.outputs.changelog }}
     steps:
+      # paths-filter reads the diff through the API on a pull_request, but through GIT on a
+      # push — where it needs `github.event.before` to be present. A shallow clone sends it
+      # to `git fetch`, which cannot authenticate once the credential is gone. The failure
+      # is invisible on a PR and on the root commit, so it first appears at the very first
+      # merge, and takes every gate behind this job with it.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         with:
@@ -62,28 +84,33 @@ jobs:
   # ---- Secret + hygiene scanning (always) ---------------------------------
   hygiene:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Run pre-commit hooks (gitleaks, detect-private-key, hygiene)
         run: |
-          pip install pre-commit
+          pip install -c requirements-ci.txt pre-commit
           pre-commit run --all-files --show-diff-on-failure
 
   # ---- SAST: dangerous-ops ruleset + Semgrep security audit (always) ------
   sast:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Install Semgrep
-        run: pip install semgrep
+        run: pip install -c requirements-ci.txt semgrep
       - name: Dangerous-operations ruleset (Layer 1 — BLOCKING)
         run: semgrep scan --config .semgrep/dangerous-ops.yml --error --metrics=off
       - name: Semgrep security audit (community rules — advisory)
@@ -94,11 +121,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -111,8 +141,11 @@ jobs:
         run: black --check .
       - name: Type check (mypy)
         run: mypy .
+      # The identical string `make backend` runs. See the note in the Makefile: -x is a
+      # prefix match, so `-x tests` excluded nothing, and `./.venv` (absent here, present
+      # for every developer) must be named or the local mirror of this job cannot pass.
       - name: Security (bandit)
-        run: bandit -r . -ll -x tests
+        run: bandit -r . -ll -q -x ./tests,./.venv
       - name: Supply-chain audit (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Tests (pytest + coverage floor)
@@ -123,11 +156,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
@@ -161,11 +197,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: docs-site
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '22'
@@ -192,10 +231,26 @@ jobs:
   static:
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+      # Keeps its credential, unlike every other job here: the step below runs an explicit
+      # `git fetch`, which cannot authenticate against a private repository without it. The
+      # rule, asserted by tests/guards/test_workflow_invariants.py, is that a job may drop the
+      # credential OR fetch, never neither-nor: dropping it from a fetching job fails closed on
+      # a private repo and passes on a public one, which is the worst of both.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          fetch-depth: 0 # the meta-guard diffs against the base branch
+          fetch-depth: 0 # every guard in this job diffs against the base branch
+
+      # Fetched ONCE, up front. Three guards below diff against this ref, and they must not
+      # each discover for themselves whether it is present — the declaration guard treats an
+      # unreadable diff as a hard failure, which is only reasonable if the ref is really here.
+      - name: Fetch the base branch the guards diff against
+        if: github.event_name == 'pull_request'
+        run: git fetch -q --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -220,7 +275,7 @@ jobs:
       # downstream check quietly passing on an input it never really inspected.
       - name: Guard fault tests
         run: |
-          pip install -q pyyaml pytest
+          pip install -q -c requirements-ci.txt pyyaml pytest
           python3 -m pytest tests/guards -q
 
       # The Definition of Done, made checkable. Skipped for bot authors: a Dependabot PR body is
@@ -259,7 +314,9 @@ jobs:
       # Every requirement must be exactly pinned ('==' or a hash) — no floating spec an agent or
       # a resolver could bump silently. JS is deterministic via `npm ci` + package-lock integrity.
       - name: Requirements are fully pinned
-        run: python3 scripts/check_pins.py backend/requirements.txt backend/requirements-dev.txt
+        run: |
+          python3 scripts/check_pins.py backend/requirements.txt \
+            backend/requirements-dev.txt requirements-ci.txt
 
       # An agent trying to make CI green can add # noqa / # type: ignore / # nosemgrep /
       # # pragma: no cover, or change code without a test. This diff-based check fails on net-new
@@ -274,7 +331,6 @@ jobs:
           ALLOW_SENSITIVE: ${{ contains(github.event.pull_request.labels.*.name, 'sensitive-change-approved') }}
           ALLOW_EXEMPTIONS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-exemptions') }}
         run: |
-          git fetch -q origin "${{ github.base_ref }}"
           # An array, not a string: an unquoted "$flags" relies on word-splitting (SC2086) and
           # would break the moment a flag ever contained a space.
           flags=()
@@ -305,6 +361,7 @@ jobs:
     needs: [changes, hygiene, sast, backend, frontend, docs, static]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Verify every gate passed (or was skipped)
         run: |

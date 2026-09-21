@@ -1,0 +1,31 @@
+# The programs that decide whether a pull request is safe.
+#
+# These are NOT application dependencies. They are the scanners and the test runner the merge
+# gate runs, and swapping one for a poisoned build is the highest-leverage supply-chain move
+# against this repository. It was also, until this file existed, the one dependency change
+# nothing asked a human about: `backend/requirements*` sat in every "needs a human" list while
+# the programs judging the pull request were installed unpinned, straight from the index.
+#
+# An escape hatch must never be wider than the gate it escapes. This file is matched by
+# `GUARD_FILE_RE` in scripts/meta_guard.py, so changing it needs the owner's `guardrail-change`
+# label. Two tests in tests/guards/test_workflow_invariants.py hold that line:
+# `test_the_scanner_manifest_needs_the_owners_label` reads the real GUARD_FILE_RE and fails if
+# this path stops being gated, and `test_every_program_that_judges_a_pull_request_is_pinned`
+# fails on any `pip install` in any workflow that names neither a manifest nor a version.
+#
+# Exact pins, no hashes. Hashes are the next rung and worth taking if you adopt pip-compile:
+#   pip-compile --generate-hashes --allow-unsafe -o requirements-ci.txt requirements-ci.in
+# scripts/check_pins.py already reconciles a `.in` with the `.txt` beside it in BOTH
+# directions, so that upgrade needs no change to the gate.
+#
+# Used as a CONSTRAINTS file (`pip install -c requirements-ci.txt <tool>`), not installed
+# wholesale. One source of truth for the versions, while each job installs only the tool it
+# runs — installing semgrep into the three jobs that do not use it would add a billable
+# minute to each, and GitHub rounds every job up to a full minute.
+#
+# Bumps arrive as Dependabot PRs (pip ecosystem, "/"), after the 7-day cooldown that the
+# sensitive-path waiver in ci.yml assumes.
+pre-commit==4.6.2
+semgrep==1.177.0
+pytest==9.1.1
+pyyaml==6.0.3

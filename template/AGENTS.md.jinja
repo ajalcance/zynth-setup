@@ -32,7 +32,7 @@ Attempts to weaken a guard are themselves gated and reviewed. What each one prot
 | **pytest / coverage floor**{% if include_frontend %} · **vitest**{% endif %} | untested behaviour | add the test; don't lower the threshold |
 | **dod-check** (`scripts/dod-check.py`) | docs drifting out of sync with code | update the docs to match reality |
 | **check_pins** (`scripts/check_pins.py`) | an unpinned / floating dependency | pin the exact version |
-| **meta_guard** (`scripts/meta_guard.py`) | silently weakening a guard: new suppressions, code without a test, editing a guard-defining file, changing a sensitive path (migrations/auth/audit), or lowering a threshold | address the real cause it flagged — a label is the owner's call, not yours |
+| **meta_guard** (`scripts/meta_guard.py`) | silently weakening a guard: new suppressions, code without a test, editing a guard-defining file (`scripts/`, a workflow, a ruleset, an ADR, `requirements-ci.txt`), changing a sensitive path (migrations/auth/audit), or lowering a threshold | address the real cause it flagged — a label is the owner's call, not yours |
 | **actionlint / shellcheck** | broken workflow expressions, unsafe shell | fix the workflow or script; don't add a `# shellcheck disable` |
 | **standards_check** (`scripts/standards_check.py`) | a standards rule claiming a `[CI]` gate that doesn't exist, or a citation to a rule that was deleted | name a real mechanism, or lower the marker to `[Review]` and be honest |
 | **release_preflight** (`scripts/release_preflight.py`) | releasing past an owner's hold, an open production blocker, a dirty or unmerged tree, a re-pointed tag, or missing release notes | fix what it names — a release is the one path with no PR review behind it |

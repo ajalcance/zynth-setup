@@ -95,12 +95,22 @@ GUARD_FILE_RE = re.compile(
     # `docs/**` scope waives the keystroke prompt, which left this the one record that outranks
     # everything and was gated by nothing.
     r"|^docs/decisions/.*\.md$"
+    # The programs that DECIDE whether a pull request is safe. Ordinary manifests stay
+    # out of this list on purpose (see SENSITIVE_PATH_RE below), but a scanner is not an
+    # ordinary dependency: swapping one for a poisoned build is the one dependency change
+    # nothing else asks about. An escape hatch must never be wider than the gate.
+    r"|^requirements-ci\.(in|txt)$"
 )
 
 
-# Paths whose blast radius outlives the PR. Deliberately NARROW: dependency manifests are
-# excluded because Dependabot touches them constantly, and a label everyone applies weekly
-# stops being a signal. Those are already covered by check_pins + CODEOWNERS review.
+# Paths whose blast radius outlives the PR. Deliberately NARROW: APPLICATION dependency
+# manifests are excluded because Dependabot touches them constantly, and a label everyone
+# applies weekly stops being a signal. Those are covered by check_pins + CODEOWNERS review.
+#
+# `requirements-ci.txt` is the exception and lives in GUARD_FILE_RE above, because the
+# programs that DECIDE whether a PR is safe are not ordinary dependencies. If you add a
+# manifest here, say which kind it is — a stale comment on a security list is not untidiness,
+# it is an instruction to the next person to leave the hole.
 SENSITIVE_PATH_RE = re.compile(
     r"^backend/migrations/versions/.*\.py$"  # irreversible: rewrites stored data
     r"|^backend/[^/]+/auth/"  # who can reach what

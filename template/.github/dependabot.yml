@@ -17,22 +17,45 @@
 # branch and Dependabot's default is correct. If you ever reintroduce a long-lived branch,
 # this file is one of the places that must learn about it — it silently assumed the wrong
 # thing last time precisely because it isn't a file anyone thinks of as branching-related.
+#
+# `cooldown` is not hygiene, it is the premise an argument already rests on. CI waives the
+# sensitive-path label for Dependabot when a diff touches only manifests, and that waiver
+# assumes the version has been public long enough for a malicious publish to be noticed.
+# Without a cooldown, a version published an hour ago can be proposed immediately — down the
+# shortest automated path to merge in the repository. Encode the premise an argument rests
+# on, or the argument is decoration. tests/guards/test_workflow_invariants.py fails if any
+# ecosystem lacks one or sets it below the 7 days the waiver assumes.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
     groups:
       github-actions:
         patterns: ["*"]
 
+  # The scanners that judge a pull request. Pinned in requirements-ci.txt at the repo root,
+  # and gated by the meta-guard — so a bump here arrives as a PR that needs the owner's label.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci", "guardrail-change"]
+
   - package-ecosystem: pip
     directory: "/backend"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels: ["dependencies", "backend"]
     groups:
@@ -45,6 +68,8 @@ updates:
     directory: "/frontend"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels: ["dependencies", "frontend"]
     groups:
@@ -80,6 +105,8 @@ updates:
     directory: "/docs-site"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels: ["dependencies", "docs-site"]
     groups:
@@ -102,6 +129,8 @@ updates:
     directory: "/backend"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels: ["dependencies", "docker"]
 
@@ -109,6 +138,8 @@ updates:
     directory: "/frontend"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels: ["dependencies", "docker"]
 
@@ -116,5 +147,7 @@ updates:
     directory: "/.devcontainer"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels: ["dependencies", "docker"]

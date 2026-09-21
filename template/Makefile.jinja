@@ -18,12 +18,22 @@ help:
 	@echo "Targets: context | risk-context | preflight | check | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
+# bandit's -x is a PREFIX match against the paths it scans, and `-r .` yields paths that
+# begin `./` — so the `-x tests` this shipped with excluded nothing, measurably: on a
+# three-line fixture it scanned 3 of 3 lines where `-x ./tests` scanned 1. CI was green
+# regardless, because a runner has no virtualenv; a developer who follows CLAUDE.md §4 and
+# creates one at backend/.venv scanned 2,014,372 lines and collected 84 high findings from
+# websockets and pip. The command the contract calls the local gate could not pass for them.
+#
+# `./.venv` does not exist on a runner and bandit tolerates the missing path, so ONE string
+# works in both environments — which is the point. A guard that behaves one way locally and
+# another way in CI teaches you to trust the wrong one (EXP-0002).
 backend:
 	cd backend && \
 	.venv/bin/ruff check . && \
 	.venv/bin/black --check . && \
 	.venv/bin/mypy . && \
-	.venv/bin/bandit -r {{ python_package }} -ll -q && \
+	.venv/bin/bandit -r . -ll -q -x ./tests,./.venv && \
 	.venv/bin/pip-audit -r requirements.txt && \
 	.venv/bin/pytest -q --cov
 {% if include_frontend %}
