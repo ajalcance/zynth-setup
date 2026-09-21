@@ -46,7 +46,7 @@ Two related orderings follow from the same reasoning, and are asserted by
 - **The SBOM scan runs before anything is recorded, signed or published.** Scanning afterwards
   means a failing scan rejects a release that already looks legitimate — the tag exists, the
   images are signed, and somebody downstream has to be told not to use them.
-- **`deploy/verify.sh` takes a tag, not a list of images**, and reads the digests out of the
+- **The deploy verifier takes a tag, not a list of images** (deploy module only), and reads the digests out of the
   signed evidence. An operator who types a digest by hand can type one the evidence does not
   mention, and then every check just performed covered a different artifact from the one about
   to run.
@@ -57,8 +57,8 @@ Two related orderings follow from the same reasoning, and are asserted by
   simply not promotable, and it says so itself. That is the right split: a project mid-build
   phase must be able to cut releases without the register becoming something people delete.
 - The deploy host now needs the evidence document and its signature bundle, not just an image
-  reference. `gh release download <tag> --pattern 'release-evidence.*'` fetches both, and
-  `verify.sh` refuses without them. This is a deliberate break from the previous invocation.
+  reference. `gh release download <tag> --pattern 'release-evidence.*'` fetches both, and the
+  verifier refuses without them. This is a deliberate break from the previous invocation.
 - The pattern generalises well beyond readiness: **bind a verdict to the artifact it describes,
   never to a checkout.** Any fact a later step needs about a build belongs in the signed record
   of that build.
