@@ -86,6 +86,24 @@ jobs:
       - name: Install Copier
         run: pipx install copier
 
+      # The owner tier (owner, maintainer, license, review posture) has no defaults, so an
+      # agent generating with --defaults cannot answer for the owner. This proves the refusal
+      # is real — no project, no files — and that every owner question is one the agent is
+      # told to ask (scripts/check-owner-questions.py reads copier.yml).
+      - name: The owner tier has no defaults — an agent cannot answer for the owner
+        run: |
+          pip install -q pyyaml
+          python3 scripts/check-owner-questions.py
+          rm -rf /tmp/nodata
+          if copier copy --defaults --trust --vcs-ref HEAD --data project_name="No Data" . /tmp/nodata 2>/tmp/nodata.err; then
+            echo "::error::--defaults generated a project with no owner data"; exit 1
+          fi
+          grep -qi "required\|validation" /tmp/nodata.err || { echo "::error::refused for another reason:"; cat /tmp/nodata.err; exit 1; }
+          if [ -e /tmp/nodata ] && [ -n "$(ls -A /tmp/nodata)" ]; then
+            echo "::error::files were written before the refusal:"; ls -A /tmp/nodata; exit 1
+          fi
+          echo "owner-tier canary: OK — --defaults without owner data wrote nothing."
+
       # --vcs-ref HEAD is LOAD-BEARING. Copier defaults to the latest PEP440 tag when the
       # source is a git repo, so after v1.0.0 was tagged this step silently generated the
       # RELEASE instead of the commit under test — the self-test went green while testing
@@ -98,6 +116,8 @@ jobs:
             --data github_owner="ci" \
             --data author_name="CI" \
             --data author_email="ci@example.com" \
+            --data license="Apache-2.0" \
+            --data solo_maintainer=true \
             ${{ matrix.extra }} \
             . /tmp/gen
 

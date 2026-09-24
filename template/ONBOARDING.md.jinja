@@ -5,6 +5,21 @@ Most of this project is green and hardened the moment it is generated. A few con
 cannot edit them away (see [`docs/decisions/0004-agent-resistant-guardrails.md`](docs/decisions/0004-agent-resistant-guardrails.md)).
 This is the short list of switches **you** flip once.
 
+## 0. Decisions recorded at generation
+
+These were answered when the project was generated — by the owner, or by an agent on the
+owner's instruction. They are the premises the rest of this file rests on. To change one,
+re-run `copier update --data <key>=<value>`; the posture below follows from the answers.
+
+| Decision | Answer | What follows from it |
+|---|---|---|
+| Owner | `{{ github_owner }}` | owns the repository; named in CODEOWNERS |
+| Maintainer of record | {{ author_name }} <{{ author_email }}> | SECURITY.md and CODE_OF_CONDUCT.md contact |
+| License | {{ license }} | `LICENSE` |
+| Solo maintainer | {{ "yes" if solo_maintainer else "no" }} | {% if solo_maintainer %}merges gate on green CI; code-owner review is advisory (§2){% else %}every guardrail change needs a code-owner review from a second human (§2){% endif %} |
+| Modules | frontend={{ "on" if include_frontend else "off" }} · docs-site={{ "on" if include_docs_site else "off" }} · deploy={{ "on" if include_deploy else "off" }}{% if include_deploy %} ({{ server_host }}){% endif %} · compliance spine={{ "on" if include_compliance_spine else "off" }} · Claude hooks={{ "on" if include_claude_hooks else "off" }} | which gates and jobs exist |
+
+
 ## 1. Push the repo to GitHub
 
 ```bash

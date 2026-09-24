@@ -7,6 +7,8 @@
 #
 # Enforced by the branch ruleset (.github/rulesets/main.json, "require code owner review"), applied
 # with scripts/bootstrap-repo.sh. To require review on ALL changes instead, uncomment the catch-all.
+# tests/guards/test_codeowners_sync.py fails if a file the meta-guard gates has no entry here:
+# the label and the review are the same decision, and one list must not outgrow the other.
 # *                            @{{ github_owner }}
 # https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
@@ -18,6 +20,13 @@
 
 # --- Doc-consistency + repo-hardening guards ---
 /scripts/                      @{{ github_owner }}
+/tests/guards/                 @{{ github_owner }}
+/.hadolint.yaml                @{{ github_owner }}
+/requirements-ci.txt           @{{ github_owner }}
+
+# --- Records that outrank the roadmap, and the lesson registry (meta-guard gates both) ---
+/docs/decisions/               @{{ github_owner }}
+/experience/registry.toml      @{{ github_owner }}
 
 # --- Dependency manifests (supply-chain surface) ---
 /backend/pyproject.toml        @{{ github_owner }}

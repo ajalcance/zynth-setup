@@ -42,10 +42,21 @@ project_description:
   help: One-line description
   default: ""
 
-# --- Ownership ----------------------------------------------------------------
+# --- Ownership — the OWNER tier: no defaults, by design ------------------------
+# An AI agent runs this template far more often than a human does, and it generates with
+# `--defaults`. Any question below that carries a default is answered by nobody: the agent
+# takes the default, the owner never hears the question, and the project ships with a
+# license, a maintainer of record and a review posture that no one chose. So the owner's
+# decisions carry NO default, and a validator refuses an empty answer even when one is
+# passed. `--defaults` alone refuses to generate (zero files) — the self-test proves it.
+# `_message_before_copy` tells the agent what to ask. Everything outside this tier the agent
+# may infer from the request.
 github_owner:
   type: str
-  help: GitHub org or user that will own the repo
+  help: GitHub org or user that will own the repo (the owner's decision — ask them)
+  validator: >-
+    {% if not (github_owner | trim) %}github_owner is the owner's decision: ask which GitHub
+    org or user will own the repository, then pass --data github_owner=...{% endif %}
 
 github_repo:
   type: str
@@ -54,21 +65,24 @@ github_repo:
 
 author_name:
   type: str
-  help: Primary author / maintainer name
-  default: ""
+  help: Maintainer of record (the owner's decision — ask them)
+  validator: >-
+    {% if not (author_name | trim) %}author_name is the owner's decision: ask who the
+    maintainer of record is, then pass --data author_name=...{% endif %}
 
 author_email:
   type: str
-  help: Contact email (used in SECURITY.md / CODE_OF_CONDUCT.md)
-  default: ""
+  help: Where security reports and conduct concerns go (SECURITY.md, CODE_OF_CONDUCT.md)
+  validator: >-
+    {% if '@' not in author_email %}author_email is the owner's decision: ask where security
+    reports should go, then pass --data author_email=... (must be an address){% endif %}
 
 license:
   type: str
-  help: License for the generated project
+  help: License for the generated project (the owner's decision — ask them)
   choices:
     - Apache-2.0
     - MIT
-  default: Apache-2.0
 
 initial_version:
   type: str
@@ -99,9 +113,13 @@ include_deploy:
 
 server_host:
   type: str
-  help: Deploy target host (IP or domain) — used in deploy docs/config
+  help: Deploy target host (IP or domain) — used in deploy docs/config (the owner's decision)
   default: ""
   when: "{{ include_deploy }}"
+  validator: >-
+    {% if include_deploy and not (server_host | trim) %}server_host is the owner's decision:
+    the deploy module needs to know where it deploys — ask, then pass --data
+    server_host=...{% endif %}
 
 include_compliance_spine:
   type: bool
@@ -111,16 +129,15 @@ include_compliance_spine:
     data. Each new action must then satisfy 4 coverage guards. You can add it later.
   default: false
 
-# --- Governance ---------------------------------------------------------------
+# --- Governance — owner tier: no default -----------------------------------------
 solo_maintainer:
   type: bool
   help: >-
-    Are you the only maintainer? GitHub forbids approving your own PR, so requiring
-    code-owner review would block EVERY guardrail change and force `gh pr merge --admin`.
-    A control bypassed by reflex is worse than none. Yes = gate merges on green CI
-    instead (CODEOWNERS still auto-requests review, advisory). No = require code-owner
-    review, which needs a second human.
-  default: true
+    Are you the only maintainer? (The owner's decision — ask them.) GitHub forbids approving
+    your own PR, so requiring code-owner review would block EVERY guardrail change and force
+    `gh pr merge --admin`. A control bypassed by reflex is worse than none. Yes = gate merges
+    on green CI instead (CODEOWNERS still auto-requests review, advisory). No = require
+    code-owner review of every guardrail change, which needs a second human.
 
 # --- Local agent ergonomics ---------------------------------------------------
 include_claude_hooks:
@@ -168,8 +185,30 @@ _tasks:
     {% if include_docs_site %}cd docs-site && npm ci --no-audit --no-fund
     || echo '❌ SETUP INCOMPLETE — docs-site deps did not install (offline?). Run `make preflight` for the exact fix.'{% else %}true{% endif %}
 
+# Shown before any question — and under --defaults, where it is the only prompt an agent sees.
+_message_before_copy: |
+  zynth-setup — read this before generating.
+
+  If you are an AI agent running this for someone: the OWNER tier has no defaults, because
+  those answers are the owner's decisions, not yours. Ask the owner, in plain words, and pass
+  the answers with --data:
+    · github_owner     which GitHub org or user will own the repository?
+    · author_name      who is the maintainer of record?
+    · author_email     where should security reports go? (an address)
+    · license          Apache-2.0 or MIT?
+    · solo_maintainer  are you the only maintainer? yes: merges gate on green CI, review is
+                       advisory. no: every guardrail change needs a second human's review.
+    · server_host      only with include_deploy=true: where does it deploy?
+  Everything else — project name, slug, package, which modules — you may infer from the
+  request. `--defaults` without the owner tier refuses to generate; that is intended.
+
 _message_after_copy: |
   ✅ {{ project_name }} scaffolded.
+
+  Decisions recorded (also in ONBOARDING.md and .copier-answers.yml):
+    owner {{ github_owner }} · maintainer {{ author_name }} <{{ author_email }}> · license {{ license }}
+    {% if solo_maintainer %}solo maintainer — merges gate on green CI; code-owner review is advisory{% else %}two-person — every guardrail change needs a code-owner review from someone other than the author{% endif %}
+    modules — frontend={{ include_frontend }} docs-site={{ include_docs_site }} deploy={{ include_deploy }}{% if include_deploy %} ({{ server_host }}){% endif %} spine={{ include_compliance_spine }} hooks={{ include_claude_hooks }}
 
   Next steps (run from the project root):
     make preflight                              # confirms the toolchain installed correctly

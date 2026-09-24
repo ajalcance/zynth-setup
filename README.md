@@ -111,28 +111,47 @@ cd my-new-project
 
 ### Non-interactive (headless / AI-driven) generation
 
-The prompts need a TTY, so an agent or a script must pass every answer with `--data`. All keys,
-with the optional modules off:
+The prompts need a TTY, so an agent or a script passes answers with `--data`. Two tiers:
+
+- **The owner tier has no defaults.** Owner, maintainer of record, contact address, license,
+  and whether there is one maintainer or two are the *owner's* decisions. `--defaults` will
+  not fill them: without them Copier refuses and writes nothing (the self-test proves it).
+  Enabling `include_deploy=true` adds `server_host` to that tier.
+- **Everything else** has a default or can be inferred from the request (name, slug, package,
+  which optional modules).
 
 ```bash
 copier copy --trust --defaults \
   --data project_name="My New Project" \
-  --data project_slug="my-new-project" \
-  --data python_package="app" \
-  --data project_description="One-line description" \
   --data github_owner="your-org" \
-  --data github_repo="my-new-project" \
   --data author_name="Your Name" \
   --data author_email="you@example.com" \
   --data license="Apache-2.0" \
-  --data initial_version="0.1.0" \
+  --data solo_maintainer=true \
   --data include_frontend=false \
   --data include_docs_site=false \
   --data include_deploy=false \
   --data include_compliance_spine=false \
-  --data include_claude_hooks=true \
   gh:ajalcance/zynth-setup my-new-project
 ```
+
+#### If you are an AI agent generating this for someone
+
+The owner-tier answers are not yours to invent, and the template will not let you skip them.
+Before running Copier, ask the owner these questions in plain words and pass their answers:
+
+| Ask | Key | What follows from the answer |
+|---|---|---|
+| Which GitHub org or user will own the repository? | `github_owner` | CODEOWNERS, `gh repo create` |
+| Who is the maintainer of record, and where should security reports go? | `author_name`, `author_email` | SECURITY.md, CODE_OF_CONDUCT.md |
+| Apache-2.0 or MIT? | `license` | `LICENSE` |
+| Are you the only maintainer? | `solo_maintainer` | **yes:** merges gate on green CI, code-owner review is advisory. **no:** every guardrail change needs a second human's review (GitHub forbids approving your own PR) |
+| Where does it deploy? (only with `include_deploy=true`) | `server_host` | deploy config and docs |
+
+Do not answer these from the README's examples; `your-org` is a placeholder and a guard test
+in the generated project rejects it. Copier prints the same list before the first question,
+including under `--defaults`. The answers are recorded in the generated `ONBOARDING.md` and
+in `.copier-answers.yml`; the closing message prints the resulting posture.
 
 ### Before you generate
 
@@ -147,7 +166,7 @@ Three things that bite on a fresh machine, in the order you meet them:
   nowhere else to go, and the local hook will refuse it — push that one by hand, then work in
   branches from then on.
 
-`--defaults` fills anything you omit. Enabling `include_deploy=true` also requires
+`--defaults` fills anything outside the owner tier. Enabling `include_deploy=true` also requires
 `--data server_host=<ip-or-domain>`.
 
 `--trust` is required because the template runs post-generation setup tasks (`git init`, create the
@@ -174,6 +193,11 @@ Copier records your answers in `.copier-answers.yml`, so you can pull framework 
 ```bash
 copier update --trust   # in the generated project's repo root
 ```
+
+Projects generated before v3.1.0 may have recorded an empty `author_name` or `author_email`
+(those questions had defaults then). The owner tier now refuses an empty answer, so the first
+update from such a project must pass them once: `copier update --trust --data
+author_name="..." --data author_email="..."`. They are recorded and not asked again.
 
 For this to work, `.copier-answers.yml` must point at the **GitHub source**, not a local path.
 Always generate from `gh:{{ github_owner }}/zynth-setup` (a full clone or the `gh:` shorthand) —
