@@ -6,6 +6,7 @@
 #   make policy       the repository-wide guards (the same list CI runs)
 #   make harness      lint the guards, their tests and the hooks
 #   make infra-lint   actionlint + zizmor on the workflows, hadolint on the Dockerfiles
+#   make audit        the twelve-point CI-integrity audit (quarterly, and at each growth trigger)
 #   make backend      backend gate only (the common per-slice case)
 #   make fmt          auto-format everything
 #   make dod-check    doc-consistency guards (as-built + stale refs)
@@ -22,10 +23,10 @@ PY ?= backend/.venv/bin/python
 ZIZMOR ?= backend/.venv/bin/zizmor
 CI_TOOLS ?= $(HOME)/.cache/ci-tools
 
-.PHONY: help context risk-context preflight release-preflight check policy harness infra-lint backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+.PHONY: help context risk-context preflight release-preflight check policy harness infra-lint audit backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: context | risk-context | preflight | check | policy | harness | infra-lint | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
+	@echo "Targets: context | risk-context | preflight | check | policy | harness | infra-lint | audit | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 # bandit's -x is a PREFIX match against the paths it scans, and `-r .` yields paths that
@@ -131,6 +132,14 @@ infra-lint:
 	"$(CI_TOOLS)/actionlint" -color && \
 	$(ZIZMOR) --no-online-audits --min-severity medium .github/workflows && \
 	git ls-files -z '*Dockerfile*' | xargs -0 "$(CI_TOOLS)/hadolint"
+
+# ---- The twelve-point CI-integrity audit --------------------------------------
+# Quarterly, and at each growth trigger in docs/PLAN.md. Seven points run the control that
+# holds them and fail closed; five print the command a person runs. The scheduled workflow
+# (.github/workflows/audit.yml) runs this and opens an issue with the result.
+#   make audit ONLY=4   one point
+audit:
+	$(PY) scripts/audit.py $(if $(ONLY),--only $(ONLY),)
 
 # ---- The harness: lint the files that check everything else -----------------
 # `make backend` runs ruff and black over backend/ only, so until this target existed the

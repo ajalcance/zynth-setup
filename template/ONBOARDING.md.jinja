@@ -77,7 +77,12 @@ on **nothing merges without green CI**, and `main` cannot be force-pushed or del
 >
 > **What this costs:** agent-resistance now rests entirely on CI being fail-closed and enforced in
 > repo settings an agent cannot edit — the branch ruleset, `ci-complete`, and the CI meta-guard.
-> If you add a second maintainer, re-run with `solo_maintainer=false`.
+> And the forge cannot tell the agent from you: both act through your account, so "only the
+> owner approves a change to the checks" is held by local agent settings and the meta-guard's
+> label, not by GitHub. That is acceptable until real customers depend on this repository's
+> releases — `docs/PLAN.md` names that as a growth trigger: a separate machine account for the
+> agent (write, not admin) and `solo_maintainer=false`, so the separation is enforced and every
+> action is attributable. If you add a second maintainer earlier, re-run with `solo_maintainer=false`.
 
 **Prove it fails closed (do this once).** Confirm the ruleset blocks a direct push to `main`:
 

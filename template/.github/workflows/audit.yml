@@ -1,0 +1,78 @@
+# ==============================================================================
+# Quarterly CI-integrity audit — the twelve-point checklist, as an issue
+# ==============================================================================
+# Every defect the audit behind this list found shared one shape: a check that reported
+# success without doing its job. `make audit` runs the seven mechanical points (each fails
+# closed) and prints the five manual ones with their commands; this workflow runs it on the
+# first day of each quarter and opens an issue carrying the result and the checklist, so the
+# manual points are assigned to a person and the answers are recorded where they can be found.
+#
+# Run it early — `workflow_dispatch` — at any growth trigger (docs/PLAN.md): CI time per PR
+# crosses ~15 minutes, the codebase doubles, a new service or language, a new automation
+# account or agent with write access, or the first paying customer approaches.
+# ==============================================================================
+
+name: Quarterly audit
+
+on:
+  schedule:
+    - cron: '0 7 1 1,4,7,10 *' # 07:00 UTC on the first day of each quarter
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write # the one thing this workflow writes: the audit issue
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0 # the secret-scan canary and pin checks read history and tracked files
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install the pinned tools
+        run: pip install -q -c requirements-ci.txt pyyaml pytest
+
+      # Never fails the workflow: a red audit must still open its issue, or the finding is
+      # lost in a run log nobody reads. The outcome is carried into the issue instead.
+      - name: Run the mechanical points (make audit)
+        id: audit
+        continue-on-error: true
+        run: make audit PY=python3 2>&1 | tee audit.log
+
+      - name: Open the audit issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          quarter="$(date -u +%Y)-Q$(( ($(date -u +%-m) - 1) / 3 + 1 ))"
+          {
+            echo "## CI-integrity audit — $quarter"
+            echo
+            echo "Mechanical points: **$OUTCOME**. Log below; manual points need a person — check each box with the answer."
+            echo
+            echo '```'
+            cat audit.log
+            echo '```'
+            echo
+            echo "### The checklist"
+            echo
+            python3 scripts/audit.py --list
+            echo
+            echo "### Growth triggers (run this again before the next quarter if any applies)"
+            echo
+            echo "- CI time per pull request crosses ~15 minutes"
+            echo "- the codebase doubles"
+            echo "- a new service or language is added"
+            echo "- a new automation account or AI agent gets write access"
+            echo "- the first paying customer approaches"
+          } > body.md
+          gh issue create --title "CI-integrity audit — $quarter ($OUTCOME)" --body-file body.md \
+            --label audit || gh issue create --title "CI-integrity audit — $quarter ($OUTCOME)" --body-file body.md

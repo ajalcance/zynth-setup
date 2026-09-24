@@ -99,6 +99,7 @@ make policy         # the repository-wide guards — the SAME list CI runs, not 
 make harness        # lint the guards, their fault tests and the session hooks
 make sast           # both Semgrep scans, the SAME definition CI runs (needs `pip install -c requirements-ci.txt semgrep`)
 make infra-lint     # actionlint + zizmor on the workflows, hadolint on the Dockerfiles (zizmor: `pip install -c requirements-ci.txt zizmor`)
+make audit          # the twelve-point CI-integrity audit — quarterly, and at each growth trigger in docs/PLAN.md
 make backend        # backend only (ruff, black, mypy, bandit, pip-audit, pytest)
 make fmt            # auto-format
 make dod-check      # doc-consistency guards (a subset of `make policy`)
@@ -239,3 +240,14 @@ importance.
     one and through git on the other, a re-run replays the *original* event payload, and a
     cancelled run reports a non-success result. Defects here are invisible until the first
     merge.
+19. **Name what only a check catches before removing it.** A "duplicate" scanner was the one
+    catching hidden Unicode direction characters, and it had caught a real one.
+20. **Cost is never a reason to check less.** Reuse a proved result, batch jobs, skip by path —
+    but every check that could fail before must still be able to fail after. Prove no check
+    was lost by diffing the gate list, not by watching the run stay green.
+21. **A trust-anchor change is its own security decision.** A pinned scanner, a signing
+    identity, an allowlist, a bot's cooldown, a checksum: each edit is a pull request on its
+    own merits with the owner's label, never bundled into the work it blocked.
+22. **A flake is a hypothesis about production.** Read the timestamps and look for the
+    boundary — midnight, month end, a pool limit — before retrying. A retry that passes has
+    hidden a real race, and the same race is waiting in production.

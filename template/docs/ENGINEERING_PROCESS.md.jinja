@@ -60,6 +60,7 @@ is concentrated on **authority and policy** changes while routine work is checke
 | CI | **Runtime versions agree** — every Python/Node declaration is checked against the image and `.nvmrc` | `[CI]` (`tests/guards/test_runtime_versions.py`) |
 | CI | **Dependabot covers every manifest** — derived from the tree, in the project | `[CI]` (`tests/guards/test_dependabot_coverage.py`) |
 | CI | **Post-merge reuse** — a tree the PR run proved (same tree hash, `ci-complete` by Actions) is not re-proved; audits always run; the weekly run is full | `[CI]` (`reuse` job, `tests/guards/test_ci_reuse.py`) |
+| Recurring | **Quarterly CI-integrity audit** — twelve points, seven mechanical and fail-closed, five with the command to run; the schedule opens an issue; growth triggers in `docs/PLAN.md` say when to run it early | `[CI]` (`make audit`, `.github/workflows/audit.yml`) |
 | Release | Tag must be an ancestor of `main`; cosign-signed images by digest{% if include_deploy %}; verified on the host by `deploy/verify.sh`{% endif %} | `[CI]`{% if not include_deploy %} (enable the deploy module){% endif %} |
 | Release | Readiness verdict recorded inside the signed evidence and read from there, never re-scanned | {% if include_deploy %}`[CI]` (`release_evidence`){% else %}`[Review]` (enable the deploy module){% endif %} |
 | Release | Build-once candidate, SBOM, digest-pinned signed evidence, promote-without-rebuild | {% if include_deploy %}`[CI]` (`release.yml` + `release_evidence`){% else %}`[Review]` (enable the deploy module){% endif %} |

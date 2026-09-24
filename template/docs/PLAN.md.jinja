@@ -16,6 +16,21 @@ are green, and the docs system is wired.
 - Define the domain: models, migrations, first feature slice.
 - Fill in [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) with the target design.
 
+## Growth triggers — run `make audit` before the quarter ends when…
+
+The twelve-point CI-integrity audit runs on a quarterly schedule (`.github/workflows/audit.yml`
+opens an issue). Run it early, by hand, when any of these happens — each one changes what the
+checks have to cover:
+
+- CI time per pull request crosses ~15 minutes.
+- The codebase doubles.
+- A new service or language is added.
+- A new automation account or AI agent gets write access.
+- You approach your first paying customer.{% if solo_maintainer %}
+  Before that point: a separate machine account for the agent (write, not admin), and re-run
+  `copier update --data solo_maintainer=false` so the forge, not local agent settings, keeps
+  the agent and the owner apart. Today both act through one account (see ONBOARDING.md §2).{% endif %}
+
 ---
 
 ## Phase 0 — Foundation & setup
