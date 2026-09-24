@@ -250,7 +250,6 @@ pool at its limit, two writers on one row. Retrying it hides the race, and the s
 waiting in production. Before a retry or a marker, read the timestamps of the failing runs
 and look for what they share. Say in the PR what boundary the flake was, or that none was found.
 """
-
 {% if include_deploy %}
 [[pattern]]
 id = "EXP-0014"
