@@ -109,6 +109,28 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _https_only_opener() -> urllib.request.OpenerDirector:
+    """An opener that can speak HTTPS and follow redirects, and nothing else.
+
+    `urlopen` accepts any scheme, so a URL assembled at run time could name `file://` and
+    read a local file into the tarball slot. This opener has no handler for file, http or
+    ftp: an unexpected scheme is an error, by construction rather than by inspection. The
+    release URL is built from constants, but the property should not depend on that.
+    """
+    opener = urllib.request.OpenerDirector()
+    for handler in (
+        urllib.request.HTTPSHandler(),
+        urllib.request.HTTPRedirectHandler(),  # github.com redirects release assets
+        urllib.request.HTTPDefaultErrorHandler(),
+        urllib.request.HTTPErrorProcessor(),
+        # Without this, a scheme nobody handles returns None instead of raising — a bare
+        # OpenerDirector fails OPEN. The fault test caught exactly that.
+        urllib.request.UnknownHandler(),
+    ):
+        opener.add_handler(handler)
+    return opener
+
+
 def ensure_binary() -> Path:
     """The pinned gitleaks, verified by checksum on EVERY run — the cache is not trusted."""
     key = _platform_key()
@@ -121,7 +143,7 @@ def ensure_binary() -> Path:
     if not tarball.is_file():
         url = f"{RELEASES}/v{VERSION}/gitleaks_{VERSION}_{key}.tar.gz"
         try:
-            with urllib.request.urlopen(url, timeout=60) as response:  # noqa: S310 — https, pinned
+            with _https_only_opener().open(url, timeout=60) as response:
                 tarball.write_bytes(response.read())
         except OSError as exc:
             raise ScanRefusedError(f"could not download {url} — {exc}") from exc

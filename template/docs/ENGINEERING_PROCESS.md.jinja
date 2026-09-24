@@ -46,7 +46,7 @@ is concentrated on **authority and policy** changes while routine work is checke
 | Git | Signed commits | `[Review]` opt-in — see [`../ONBOARDING.md`](../ONBOARDING.md) |
 | CI | Always-on hygiene (private-key, EOF/whitespace, shellcheck) | `[CI]` |
 | CI | **Secret scan over commits** — pinned by checksum, canary planted in every source tree and required found, fails closed on any range it cannot see | `[CI]` (`secret_scan`, in `make policy`) |
-| CI | Blocking SAST (Semgrep dangerous-ops) + advisory community scan | `[CI]` |
+| CI | Blocking SAST (Semgrep dangerous-ops) + community scan that blocks on findings **new since the base** and keeps its SARIF report — one definition, `make sast` | `[CI]` |
 | CI | Path-aware backend{% if include_frontend %}/frontend{% endif %}{% if include_docs_site %}/docs-site{% endif %} suites | `[CI]` |
 | CI | Static policy guards, one list — `make policy`, which CI invokes rather than relisting | `[CI]` |
 | CI | **Guard coverage** — every guard has a fault test and something that invokes it | `[CI]` (`check_guard_coverage`) |

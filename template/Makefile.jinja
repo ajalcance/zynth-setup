@@ -121,6 +121,23 @@ harness:
 	backend/.venv/bin/ruff check --config ruff-harness.toml scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %} && \
 	backend/.venv/bin/black --check -l 100 scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %}
 
+# ---- SAST: the two Semgrep scans, ONE definition ----------------------------
+# The CI `sast` job and the template self-test both run this target rather than relisting
+# the commands (the same reason `make policy` exists). Layer 1 is the repo-owned
+# dangerous-ops ruleset. Layer 2 is the community security-audit and secrets rules, which
+# ran for months as `|| true` with the output discarded — a billable minute for a result
+# nobody saw. It now fails on findings and keeps its report.
+#
+# SEMGREP_BASELINE=<sha> makes layer 2 diff-aware: only findings NEW since that commit fail.
+# CI passes the event's base. Unset — locally, and on the FIRST push to a ref, where the
+# event carries no base — the whole tree is scanned, so a freshly generated project must be
+# clean under these rules, and the template self-test keeps it that way.
+SEMGREP ?= semgrep
+sast:
+	$(SEMGREP) scan --config .semgrep/dangerous-ops.yml --error --metrics=off && \
+	$(SEMGREP) scan --config "p/security-audit" --config "p/secrets" --metrics=off \
+	  --error --sarif-output semgrep.sarif $(if $(SEMGREP_BASELINE),--baseline-commit $(SEMGREP_BASELINE),)
+
 # ---- The policy gate set — ONE definition -----------------------------------
 # Every repository-wide guard, in one list. The CI `static` job calls this target rather than
 # relisting the scripts, and so does the pre-push hook, because two lists mean a gate can be

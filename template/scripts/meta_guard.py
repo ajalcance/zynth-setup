@@ -100,6 +100,10 @@ GUARD_FILE_RE = re.compile(
     # ordinary dependency: swapping one for a poisoned build is the one dependency change
     # nothing else asks about. An escape hatch must never be wider than the gate.
     r"|^requirements-ci\.(in|txt)$"
+    # The dependency bot's own config. The cooldown it declares is the premise CI's manifest
+    # waiver rests on, and it could be removed with no special review — so "a waiver needs
+    # owner approval" was policy, not enforcement.
+    r"|^\.github/dependabot\.yml$"
 )
 
 

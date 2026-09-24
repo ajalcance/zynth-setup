@@ -17,9 +17,11 @@ step in the same job.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import shutil
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -82,6 +84,18 @@ def _sandbox(tmp_path: Path, *, config: Path = CONFIG) -> Path:
 
 
 # --- The scanner can see, and the tree this project ships is clean ----------------------
+
+
+def test_the_downloader_can_only_speak_https():
+    """A run-time URL is safe when the opener has no handler for anything but HTTPS."""
+    spec = importlib.util.spec_from_file_location("secret_scan", GUARD)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    opener = module._https_only_opener()
+    for url in ("file:///etc/hosts", "http://example.invalid/x", "ftp://example.invalid/x"):
+        with pytest.raises(urllib.error.URLError, match="unknown url type"):
+            opener.open(url, timeout=5)
 
 
 def test_the_canary_finds_a_planted_token_in_every_tree(cache):

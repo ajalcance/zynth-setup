@@ -27,6 +27,7 @@ Attempts to weaken a guard are themselves gated and reviewed. What each one prot
 |---|---|---|
 | **gitleaks** / secret scan | a leaked password, key, or token | remove the secret; reference an env var instead |
 | **Semgrep** (dangerous-ops) | code that can run arbitrary commands / other high-risk patterns | rewrite to the safe pattern; don't add an ignore |
+| **Semgrep** (community rules) | a security pattern that is NEW in this change — pre-existing findings are the baseline and do not block | fix the new finding; the baseline is not a licence to add to it |
 | **bandit / pip-audit / npm audit** | known-insecure code or a vulnerable dependency | fix the code or update the dependency |
 | **ruff / black / mypy** | style drift, type errors, latent bugs | make the code conform; don't loosen the config |
 | **pytest / coverage floor**{% if include_frontend %} · **vitest**{% endif %} | untested behaviour | add the test; don't lower the threshold |

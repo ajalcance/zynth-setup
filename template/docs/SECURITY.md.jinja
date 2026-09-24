@@ -22,7 +22,8 @@ missing (`{{ python_package }}/config.py`). Missing config / ambiguous auth → 
 
 - Dependencies are pinned; **Dependabot** proposes grouped updates.
 - CI audits dependencies (`pip-audit`, `npm audit`) and scans code (**Semgrep** dangerous-ops +
-  community rules; **bandit**).
+  community rules, which block on findings new since the base; **bandit**).
+- Commit-time hooks are pinned to commit SHAs, and the hook runs the same gitleaks version CI does.
 
 ## Runtime hardening
 

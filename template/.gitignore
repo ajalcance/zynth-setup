@@ -11,6 +11,7 @@ venv/
 .coverage.*
 htmlcov/
 coverage.xml
+semgrep.sarif
 
 # --- Secrets & local env (NEVER commit real values) ---
 .env

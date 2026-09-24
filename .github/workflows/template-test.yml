@@ -157,6 +157,16 @@ jobs:
         working-directory: /tmp/gen
         run: make harness
 
+      # No baseline, deliberately: this is the scan an adopter's FIRST push runs, when the
+      # event carries no base sha and the community rules see the whole tree. One finding in
+      # a template file and every new project is red on day one, which teaches its owner to
+      # lower the gate before they have written a line. The dangerous-ops ruleset runs too.
+      - name: SAST on the fresh project (make sast, no baseline — day one must be clean)
+        working-directory: /tmp/gen
+        run: |
+          pip install -q -c requirements-ci.txt semgrep
+          make sast
+
       # `make check` passing is NOT sufficient to commit: the generated repo's own `hygiene`
       # job (and the pre-commit hook `--trust` installs) run these, so a generated file that
       # trips end-of-file-fixer/trailing-whitespace means the adopter's FIRST COMMIT is

@@ -71,10 +71,12 @@ jobs:
               - 'backend/**'
             frontend:
               - 'frontend/**'
+            # ALL of docs/: the docs site renders every Markdown file under it, so a change
+            # to a decision record or the roadmap can break the site build. Two subfolders
+            # used to be listed here, and a docs-only PR could pass CI with the site red.
             docs:
               - 'docs-site/**'
-              - 'docs/product/**'
-              - 'docs/internal/**'
+              - 'docs/**'
             code:
               - 'backend/**'
               - 'frontend/src/**'
@@ -110,19 +112,50 @@ jobs:
   sast:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # the SARIF upload; nothing else here writes
     steps:
+      # Full history, no credential, and NO git fetch in this job: the baseline commit below
+      # is a sha from the event payload, which a full clone already contains. That keeps the
+      # invariant tests/guards/test_workflow_invariants.py holds — a job drops the credential
+      # or runs git against the remote, never neither-nor.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Install Semgrep
         run: pip install -c requirements-ci.txt semgrep
-      - name: Dangerous-operations ruleset (Layer 1 — BLOCKING)
-        run: semgrep scan --config .semgrep/dangerous-ops.yml --error --metrics=off
-      - name: Semgrep security audit (community rules — advisory)
-        run: semgrep scan --config "p/security-audit" --config "p/secrets" --metrics=off || true
+      # Both scans live in the Makefile (`make sast`), not here: one definition, as with
+      # `make policy`. The community scan was `|| true` with the output discarded — ~44
+      # seconds a run, enough to push the job into a second billed minute, for a result
+      # nobody ever saw. Now it fails on findings NEW since the base commit and keeps its
+      # report. The base is a sha from the event payload: the PR base, or the previous head
+      # on a push. On the first push to a ref there is no base, so the whole tree is
+      # scanned — which is why the template self-test scans a fresh project with no base.
+      - name: Dangerous-ops ruleset + community rules (make sast — new findings block)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          baseline=""
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            baseline="$BASE_SHA"
+          fi
+          make sast SEMGREP_BASELINE="$baseline"
+
+      # The report is the record; the gate above is the `--error`. Uploading needs code
+      # scanning to be enabled on the repository, which a private repo without Advanced
+      # Security lacks — so a failed UPLOAD does not fail the job, but a finding always does.
+      - name: Keep the Semgrep report
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3.38.1
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-community
 
   # ---- Backend: lint + type + test + Bandit (only if backend/ changed) ----
   backend:

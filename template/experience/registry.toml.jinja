@@ -170,6 +170,34 @@ the input: plant a canary it must find, generated at run time and placed in ever
 config could have exempted, and fail the run if the canary is missed. Then trust the green.
 """
 
+[[pattern]]
+id = "EXP-0016"
+title = "An advisory scan whose report is discarded"
+enforcement = "guard"
+enforced_by = ["tests/guards/test_control_liveness.py"]
+paths = [".github/workflows/*.yml", ".semgrep/*.yml"]
+guidance = """
+A scan run with `|| true` and no report kept has one observable effect: the job takes longer.
+Nobody reads the log of a step that cannot fail, so the findings were never findings. Either
+the scan blocks on something — here, on what is NEW since the base, so a fresh project is not
+red on day one for noise it inherited — and keeps its report where someone can see it, or it is
+removed. "Advisory" is a decision to look later; write down who looks, or it is a delay.
+"""
+
+[[pattern]]
+id = "EXP-0017"
+title = "A pin by tag is a pin by trust"
+enforcement = "guard"
+enforced_by = ["tests/guards/test_control_liveness.py"]
+paths = [".pre-commit-config.yaml", ".github/workflows/*.yml", "requirements-ci.txt"]
+guidance = """
+A version tag names whatever commit its upstream chooses to point it at today. The workflows
+learned this first (every action is pinned by SHA); the commit-time hooks were still pinned by
+tag, so the tool that runs on every developer machine was the one nobody had actually pinned.
+Pin by commit and keep the tag in a comment for the reader. When two places run the same
+tool, hold them to one version: two scanners disagree about what a secret looks like.
+"""
+
 {% if include_deploy %}
 [[pattern]]
 id = "EXP-0014"

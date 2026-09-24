@@ -19,6 +19,9 @@ Layered, mechanical controls that run automatically, not by memory:
 2. **SAST** — a repo-owned **Semgrep "dangerous-ops"** ruleset (blocking) flags `eval`/`exec`,
    `shell=True`, unsafe deserialization, decode-then-execute, destructive FS/SQL, and requests to
    hardcoded IPs. Plus **bandit** and community Semgrep rules (advisory).
+   *Amended 2026-09-24:* the community rules now block on findings new since the base and
+   upload their report. An advisory scan whose output was discarded cost a CI minute and
+   caught nothing (SEC-058).
 3. **Supply chain** — pinned dependencies, `pip-audit` / `npm audit` in CI, Dependabot updates.
 4. **Runtime containment** — non-root containers, least-privilege DB roles, backups. Static rules
    catch capability; runtime least-privilege is the stronger layer.
