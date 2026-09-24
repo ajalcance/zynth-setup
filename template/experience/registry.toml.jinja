@@ -156,6 +156,20 @@ event payload so a label applied afterwards never took effect, and a cancelled r
 non-success result. Defects here are structurally invisible until the first merge. Evaluate a
 check rollup by completion time, not by presence — a superseded run leaves a misleading entry.
 """
+[[pattern]]
+id = "EXP-0015"
+title = "A negative-result check with nothing proving it read its input"
+enforcement = "guard"
+enforced_by = ["scripts/secret_scan.py", "tests/guards/test_secret_scan.py"]
+paths = [".gitleaks.toml", ".pre-commit-config.yaml", ".github/workflows/*.yml", "scripts/secret_scan.py"]
+guidance = """
+"No findings" is identical whether a scanner found nothing or read nothing. The CI secret scan
+ran for months through a hook that scans the staging area — empty on a clean checkout — and
+printed Passed every time. For every check whose good result is silence, ask what proves it saw
+the input: plant a canary it must find, generated at run time and placed in every tree the
+config could have exempted, and fail the run if the canary is missed. Then trust the green.
+"""
+
 {% if include_deploy %}
 [[pattern]]
 id = "EXP-0014"

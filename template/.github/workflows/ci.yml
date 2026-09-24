@@ -93,7 +93,15 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - name: Run pre-commit hooks (gitleaks, detect-private-key, hygiene)
+      # gitleaks is SKIPPED here on purpose. Its pre-commit entry is `protect --staged`, which
+      # is right at commit time on a laptop and blind on a clean CI checkout: nothing is staged,
+      # so it read nothing and printed Passed on every run for months. Letting a decorative
+      # check print Passed is how that stays hidden. The real scan — commits, not the staging
+      # area, with a canary that proves it can see — is scripts/secret_scan.py, run by
+      # `make policy` in the static job. The local hook stays for commit-time protection.
+      - name: Run pre-commit hooks (detect-private-key, hygiene, shellcheck)
+        env:
+          SKIP: gitleaks
         run: |
           pip install -c requirements-ci.txt pre-commit
           pre-commit run --all-files --show-diff-on-failure
@@ -301,6 +309,10 @@ jobs:
       # tests/guards/test_workflow_invariants.py fails if this job ever calls one of those
       # scripts directly again.
       - name: Repository policy gates (make policy)
+        env:
+          # secret_scan.py --auto reads these to pick the range: the PR base on a pull request,
+          # the previous head on a push. The null sha on a first push means full history.
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: make policy
 
       # The guards, their fault tests and the session hooks — the trees `make backend` does

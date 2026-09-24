@@ -35,7 +35,7 @@ backend/                    FastAPI backend (Python 3.12)
   frontend/tests/           vitest + Testing Library
 {% endif %}{% if include_docs_site %}docs-site/                  documentation site
 {% endif %}{% if include_deploy %}deploy/                     Compose + Caddyfile (Postgres, migrate{% if include_compliance_spine %}, Redis, worker{% endif %}); prod pulls cosign-signed images (verify.sh)
-{% endif %}scripts/                    check_guard_coverage.py (every guard has a fault test + a surface) · check_unicode_hazards.py · dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · standards_check.py · release_preflight.py{% if include_deploy %} · release_evidence.py{% endif %} · preflight.py · context.py · pr_declaration.py · risk_context.py · bootstrap-repo.sh
+{% endif %}scripts/                    secret_scan.py (commits, pinned by checksum, canary in every tree) · check_guard_coverage.py (every guard has a fault test + a surface) · check_unicode_hazards.py · dod-check.py (doc guards) · meta_guard.py · check_pins.py · scorecard_gate.py · prod_readiness.py · standards_check.py · release_preflight.py{% if include_deploy %} · release_evidence.py{% endif %} · preflight.py · context.py · pr_declaration.py · risk_context.py · bootstrap-repo.sh
 tests/guards/               negative tests proving each guard in scripts/ CAN fail
 experience/                 registry.toml — lessons normalized onto the enforcement ladder
 docs/                       OVERVIEW / GLOSSARY / ENGINEERING_PROCESS / ARCHITECTURE / PLAN / LESSONS / decisions

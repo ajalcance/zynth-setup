@@ -130,9 +130,14 @@ harness:
 # tests/guards/test_workflow_invariants.py fails if CI invokes any of these scripts BOTH
 # directly and through `make policy`, and if this list is ever empty.
 #
+# secret_scan runs FIRST and picks its own range (--auto): the CI event's range in CI,
+# origin/main..HEAD locally, full history on a repo with no remote. It refuses to run over
+# nothing, so it never quietly passes on an empty range the way the old staged scan did.
+#
 # The diff-based guards (meta_guard, pr_declaration) are deliberately NOT here: they need a
 # base ref and a PR payload, so they belong to the pull-request context, not to a local run.
 policy:
+	python3 scripts/secret_scan.py --auto && \
 	python3 scripts/check_guard_coverage.py && \
 	python3 scripts/check_unicode_hazards.py && \
 	python3 scripts/risk_context.py --validate && \

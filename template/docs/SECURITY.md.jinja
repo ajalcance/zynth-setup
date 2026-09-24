@@ -7,7 +7,11 @@ _This is the engineering security posture. For **reporting a vulnerability**, se
 
 - **Never in git.** Only `.env.example` (placeholders) is committed. Real values live in a local
   `.env` (gitignored) or the deployment's secret store. `*.pem` / `*.key` are gitignored.
-- **Defence in depth:** `.gitignore` → gitleaks (pre-commit + CI) → `detect-private-key` hook.
+- **Defence in depth:** `.gitignore` → gitleaks at commit time (the pre-commit hook scans the
+  staging area) → `scripts/secret_scan.py` in CI, which scans the COMMITS in the pull request
+  or push and first plants a fake token in every source tree to prove it can see → the
+  `detect-private-key` hook. The CI scan is `make policy`, not the hook: a staged scan on a
+  clean checkout inspects nothing and passes, which is what this replaced.
 
 ## Fail closed
 

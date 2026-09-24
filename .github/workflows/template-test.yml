@@ -140,8 +140,17 @@ jobs:
           pip install -q -c requirements-ci.txt pyyaml pytest
           python -m pytest tests/guards -q
 
+      # The generated project is not running in its OWN CI event, but it inherits this
+      # workflow's event variables. secret_scan.py --auto would read this repository's PR
+      # base and try to resolve it in the generated project, which has no remote at all —
+      # and refuse, correctly. Cleared, --auto takes the local path: no origin, so it scans
+      # the tracked files, which is exactly what a freshly generated project is.
       - name: Repository policy gates (make policy)
         working-directory: /tmp/gen
+        env:
+          GITHUB_EVENT_NAME: ""
+          GITHUB_BASE_REF: ""
+          GITHUB_EVENT_BEFORE: ""
         run: make policy
 
       - name: Lint the harness (make harness)

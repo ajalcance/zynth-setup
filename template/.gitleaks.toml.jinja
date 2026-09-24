@@ -7,11 +7,16 @@ title = "{{ project_name }} gitleaks config"
 [extend]
 useDefault = true   # inherit gitleaks' built-in rules (AWS keys, tokens, PEMs, etc.)
 
+# The allowlist is deliberately NARROW, and is guarded like code (scripts/meta_guard.py). A
+# whole directory used to be allowlisted here — every Markdown file under docs/ — and a real
+# token pasted into a decision record would have passed. The canary in scripts/secret_scan.py
+# plants a token in every source tree the repository has, docs/ included, and fails if any one
+# of them is not found: an allowlist widened for one directory is exactly what it exists to
+# catch. Placeholders are handled by the regexes below, never by exempting a path.
 [allowlist]
-description = "Allow placeholder values in templates and docs"
+description = "Allow placeholder values, never whole directories"
 paths = [
   '''\.env\.example$''',
-  '''docs/.*\.md$''',
 ]
 regexes = [
   '''CHANGE_ME.*''',
