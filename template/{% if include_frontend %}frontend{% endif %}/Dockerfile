@@ -10,7 +10,8 @@ FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app ./
-RUN addgroup -S app && adduser -S app -G app
-USER app
+# Numeric ids, as in the backend image: resolvable by the host and by admission checks.
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
+USER 10001
 EXPOSE 3000
 CMD ["npm", "run", "start"]

@@ -26,6 +26,14 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled, edited]
   push:
     branches: [main]
+  # Weekly full run. Advisory databases and community rule sets move without us, and the
+  # post-merge `reuse` job below means a quiet main may not have been fully re-proved in a
+  # while. Monday 06:00 UTC, before the week's first merge. No tag trigger, deliberately:
+  # a release tag names a main commit whose push run already ran the audits and proved the
+  # tree, and a tag-triggered workflow that restores caches is one zizmor rightly reads as
+  # a release build open to cache poisoning. release.yml builds on its own checkout.
+  schedule:
+    - cron: '0 6 * * 1'
 
 # Cancel a superseded PR run; never cancel a run on the default branch. A cancelled run reports
 # a non-success result, so cancelling on `push` lets a main commit carry a cancelled gate — and
@@ -47,12 +55,14 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # A scheduled run has no base to diff, so paths-filter cannot answer; every part counts
+    # as changed and the whole gate runs — which is the point of that run.
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      docs: ${{ steps.filter.outputs.docs }}
-      code: ${{ steps.filter.outputs.code }}
-      changelog: ${{ steps.filter.outputs.changelog }}
+      backend: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.backend }}
+      frontend: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.frontend }}
+      docs: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.docs }}
+      code: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.code }}
+      changelog: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.changelog }}
     steps:
       # paths-filter reads the diff through the API on a pull_request, but through GIT on a
       # push — where it needs `github.event.before` to be present. A shallow clone sends it
@@ -65,6 +75,7 @@ jobs:
           persist-credentials: false
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
+        if: github.event_name != 'schedule'
         with:
           filters: |
             backend:
@@ -83,8 +94,63 @@ jobs:
             changelog:
               - 'CHANGELOG.md'
 
+  # ---- Post-merge reuse: a tree the pull-request run already proved ------------
+  # GitHub bills per job, rounded up to a minute, and the push run after a squash merge
+  # tests the SAME tree the PR run just passed. This job looks that run up: a merged PR
+  # whose head commit has this exact tree hash, with a successful `ci-complete` posted by
+  # GitHub Actions itself (not any app of that name — the same rule the ruleset applies).
+  # When it finds one, the deterministic jobs stand down. The audits never do: pip-audit
+  # and npm audit read databases that move without us, so they run on every push. A
+  # scheduled run runs everything. A lookup that FAILS means a full run —
+  # `verified` stays unset and every job proceeds — never a skipped one.
+  #
+  # Why the tree and not the sha: a squash merge is a new commit. Why the PR head's tree
+  # and not the merge ref's: the merge ref is gone after the merge, and if main's new tree
+  # equals the head's tree, the head already contained everything main had — so the tree
+  # the PR run tested (the merge of the two) was this tree too.
+  reuse:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      verified: ${{ steps.lookup.outputs.verified }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Find a successful pull-request run of this exact tree
+        id: lookup
+        continue-on-error: true # an API error is a full run, not a red default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          tree=$(git rev-parse "HEAD^{tree}")
+          verified=false
+          for head in $(gh api "repos/$REPO/commits/$SHA/pulls" \
+                          --jq '.[] | select(.merged_at != null) | .head.sha'); do
+            head_tree=$(gh api "repos/$REPO/git/commits/$head" --jq '.tree.sha')
+            [ "$head_tree" = "$tree" ] || continue
+            proof=$(gh api "repos/$REPO/commits/$head/check-runs?check_name=ci-complete" \
+                      --jq '[.check_runs[] | select(.app.slug == "github-actions" and .conclusion == "success")][0].html_url')
+            if [ -n "$proof" ]; then
+              echo "reuse: tree $tree was proved by ci-complete on PR head $head — $proof"
+              verified=true
+              break
+            fi
+          done
+          [ "$verified" = true ] || echo "reuse: no successful pull-request run of tree $tree — full run"
+          echo "verified=$verified" >> "$GITHUB_OUTPUT"
+
   # ---- Secret + hygiene scanning (always) ---------------------------------
   hygiene:
+    needs: [reuse]
+    if: ${{ !cancelled() && needs.reuse.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -110,6 +176,8 @@ jobs:
 
   # ---- SAST: dangerous-ops ruleset + Semgrep security audit (always) ------
   sast:
+    needs: [reuse]
+    if: ${{ !cancelled() && needs.reuse.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -159,8 +227,8 @@ jobs:
 
   # ---- Backend: lint + type + test + Bandit (only if backend/ changed) ----
   backend:
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
+    needs: [changes, reuse]
+    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -177,25 +245,30 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Lint (ruff)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: ruff check .
       - name: Format check (black)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: black --check .
       - name: Type check (mypy)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: mypy .
       # The identical string `make backend` runs. See the note in the Makefile: -x is a
       # prefix match, so `-x tests` excluded nothing, and `./.venv` (absent here, present
       # for every developer) must be named or the local mirror of this job cannot pass.
       - name: Security (bandit)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: bandit -r . -ll -q -x ./tests,./.venv
       - name: Supply-chain audit (pip-audit)
         run: pip-audit -r requirements.txt
       - name: Tests (pytest + coverage floor)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: pytest -q --cov
 
   # ---- Frontend: lint + type + test (only if frontend/ changed) -----------
   frontend:
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    needs: [changes, reuse]
+    if: ${{ !cancelled() && needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -213,10 +286,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Lint (eslint)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npm run lint
       - name: Format check (prettier)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npx prettier --check .
       - name: Type check (tsc)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npx tsc --noEmit
       # --omit=dev: gate on what actually SHIPS. A high advisory in the production tree
       # (next/react/sharp/postcss) fails the build; a ReDoS in a build-time linter dep that
@@ -225,18 +301,21 @@ jobs:
       - name: Supply-chain audit (npm audit, production deps)
         run: npm audit --omit=dev --audit-level=high
       - name: Tests
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npm test --if-present
       # Must mirror `make frontend` exactly — a production build break is otherwise only
       # caught post-merge at image-build time (or never). Keep this list in sync.
       - name: Production build (next build)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npm run build
       - name: Client bundle-size budget
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npm run bundle-size
 
   # ---- Docs site: lint + build (only if docs-site/ or docs content changed) ----
   docs:
-    needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    needs: [changes, reuse]
+    if: ${{ !cancelled() && needs.changes.outputs.docs == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -255,12 +334,15 @@ jobs:
         run: npm ci
       # Must mirror `make docs-site` exactly. Keep this list in sync.
       - name: Lint (eslint)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npm run lint
       - name: Format check (prettier)
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npx prettier --check .
       - name: Supply-chain audit (npm audit)
         run: npm audit --omit=dev --audit-level=high
       - name: Build
+        if: needs.reuse.outputs.verified != 'true' # proved by the PR run; audits still run
         run: npm run build
 
   # ---- Static guards, batched (always; blocking) ---------------------------
@@ -270,7 +352,8 @@ jobs:
   # `changes` stays separate on purpose: it is the dependency other jobs fan out from, so a
   # doc failure here must not skip backend/frontend/docs and cost you their signal.
   static:
-    needs: changes
+    needs: [changes, reuse]
+    if: ${{ !cancelled() && needs.reuse.outputs.verified != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -279,7 +362,7 @@ jobs:
       # rule, asserted by tests/guards/test_workflow_invariants.py, is that a job may drop the
       # credential OR fetch, never neither-nor: dropping it from a fetching job fails closed on
       # a private repo and passes on a public one, which is the worst of both.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7 # zizmor: ignore[artipacked] the credential is kept on purpose, see above
         with:
           fetch-depth: 0 # every guard in this job diffs against the base branch
 
@@ -296,28 +379,28 @@ jobs:
         with:
           python-version: '3.12'
 
-      # Workflow linting. Pinned by version AND verified by checksum — the same supply-chain
-      # discipline applied to every other dependency here. Catches invalid `needs:` references,
-      # bad `${{ }}` expressions and deprecated action inputs that YAML validity alone misses.
-      - name: Lint GitHub Actions workflows (actionlint)
-        env:
-          ACTIONLINT_VERSION: 1.7.12
-          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      # The scanners this job runs, pinned in requirements-ci.txt; ruff and black constrained
+      # by backend/requirements-dev.txt, which already pins them for `make backend`. One
+      # source of truth per tool: a second pin here would drift, and then "clean" would mean
+      # two different things.
+      - name: Install the pinned tools
         run: |
-          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
-          echo "${ACTIONLINT_SHA256}  ${tarball}" | sha256sum --check --status
-          tar -xzf "$tarball" actionlint
-          ./actionlint -color
-          rm -f actionlint "$tarball"
+          pip install -q -c requirements-ci.txt zizmor pyyaml pytest
+          pip install -q -c backend/requirements-dev.txt ruff black
+
+      # actionlint + zizmor on the workflows, hadolint on the Dockerfiles — the binaries pinned
+      # by version and verified by checksum (scripts/ci_tools.sh). One definition in the
+      # Makefile; this job, the template self-test and `make check` all run it.
+      - name: Workflow + Dockerfile lint (make infra-lint)
+        run: make infra-lint ZIZMOR=zizmor CI_TOOLS=/tmp/ci-tools
 
       # Negative tests proving each guard CAN fail. Runs BEFORE the guards themselves: if a
       # guard has silently stopped working, the fault tests say so by name, rather than every
       # downstream check quietly passing on an input it never really inspected.
-      - name: Guard fault tests
-        run: |
-          pip install -q -c requirements-ci.txt pyyaml pytest
-          python3 -m pytest tests/guards -q
+      - name: Guard fault tests (make guard-tests)
+        env:
+          CI_TOOLS: /tmp/ci-tools # the positive control for ci_tools.sh reads the cache above
+        run: make guard-tests PY=python3
 
       # The Definition of Done, made checkable. Skipped for bot authors: a Dependabot PR body is
       # machine-generated and its memory impact is genuinely nil, so requiring a declaration there
@@ -327,11 +410,13 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.pull_request.user.type != 'Bot'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          # Via the environment, never interpolated into the script: a PR body is untrusted input.
+          # Via the environment, never interpolated into the script: a PR body is untrusted
+          # input, and so is a branch name (zizmor: template-injection).
           printf '%s' "$PR_BODY" > /tmp/pr-body.md
           python3 scripts/pr_declaration.py --body-file /tmp/pr-body.md \
-            --base "origin/${{ github.base_ref }}"
+            --base "origin/${BASE_REF}"
 
       # ONE list, in the Makefile. This job used to relist each gate script by hand beside
       # the Makefile's own list, and two lists mean a gate can be added to one and forgotten
@@ -352,13 +437,7 @@ jobs:
       # not reach. Same config file locally and here, so the two cannot disagree about what
       # counts as clean.
       - name: Lint the harness (make harness)
-        run: |
-          # Constrained by backend/requirements-dev.txt, which already pins ruff and black
-          # for `make backend`. One source of truth for the versions: a second pin here
-          # would drift, and then "clean" would mean two different things.
-          pip install -q -c backend/requirements-dev.txt ruff black
-          ruff check --config ruff-harness.toml scripts tests/guards .claude/hooks
-          black --check -l 100 scripts tests/guards .claude/hooks
+        run: make harness PY=python3
 
       # An agent trying to make CI green can add # noqa / # type: ignore / # nosemgrep /
       # # pragma: no cover, or change code without a test. This diff-based check fails on net-new
@@ -372,6 +451,7 @@ jobs:
           ALLOW_GUARDRAIL_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'guardrail-change') }}
           ALLOW_SENSITIVE: ${{ contains(github.event.pull_request.labels.*.name, 'sensitive-change-approved') }}
           ALLOW_EXEMPTIONS: ${{ contains(github.event.pull_request.labels.*.name, 'allow-exemptions') }}
+          BASE_REF: ${{ github.base_ref }} # via env, never interpolated (zizmor: template-injection)
         run: |
           # An array, not a string: an unquoted "$flags" relies on word-splitting (SC2086) and
           # would break the moment a flag ever contained a space.
@@ -381,7 +461,7 @@ jobs:
           if [ "$ALLOW_GUARDRAIL_CHANGE" = "true" ]; then flags+=(--allow-guardrail-change); fi
           if [ "$ALLOW_SENSITIVE" = "true" ]; then flags+=(--allow-sensitive); fi
           if [ "$ALLOW_EXEMPTIONS" = "true" ]; then flags+=(--allow-exemptions); fi
-          python3 scripts/meta_guard.py --base "origin/${{ github.base_ref }}" "${flags[@]}"
+          python3 scripts/meta_guard.py --base "origin/${BASE_REF}" "${flags[@]}"
 
       # Advisory only — a warning annotation, never a failure.
       - name: Docs-sync nudge — code changed without a CHANGELOG entry
@@ -400,7 +480,7 @@ jobs:
   # 'skipped'. The branch ruleset (.github/rulesets/main.json) requires *this* context, so the gate
   # cannot be edited away in-repo. See docs/decisions/0004.
   ci-complete:
-    needs: [changes, hygiene, sast, backend, frontend, docs, static]
+    needs: [changes, reuse, hygiene, sast, backend, frontend, docs, static]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

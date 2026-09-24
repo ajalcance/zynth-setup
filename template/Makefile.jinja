@@ -5,6 +5,7 @@
 #   make check        full local gate
 #   make policy       the repository-wide guards (the same list CI runs)
 #   make harness      lint the guards, their tests and the hooks
+#   make infra-lint   actionlint + zizmor on the workflows, hadolint on the Dockerfiles
 #   make backend      backend gate only (the common per-slice case)
 #   make fmt          auto-format everything
 #   make dod-check    doc-consistency guards (as-built + stale refs)
@@ -14,10 +15,17 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help context risk-context preflight release-preflight check policy harness backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+# The programs the gates run. Overridable because CI has no virtualenv: the `static` job
+# runs `make guard-tests harness infra-lint PY=python3 ZIZMOR=zizmor`, so each recipe is one
+# definition with two invocations, not two definitions that drift.
+PY ?= backend/.venv/bin/python
+ZIZMOR ?= backend/.venv/bin/zizmor
+CI_TOOLS ?= $(HOME)/.cache/ci-tools
+
+.PHONY: help context risk-context preflight release-preflight check policy harness infra-lint backend fmt test lint dod-check guard-tests{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 help:
-	@echo "Targets: context | risk-context | preflight | check | policy | harness | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
+	@echo "Targets: context | risk-context | preflight | check | policy | harness | infra-lint | guard-tests | backend{% if include_frontend %} | frontend{% endif %}{% if include_docs_site %} | docs-site{% endif %} | fmt | test | lint | dod-check | release-preflight"
 
 # ---- Backend (Python) — uses the repo venv directly, no activation needed ----
 # bandit's -x is a PREFIX match against the paths it scans, and `-r .` yields paths that
@@ -77,10 +85,10 @@ preflight:
 # Negative tests proving each guard in scripts/ CAN fail. A guard that silently stops working
 # reports green while checking nothing — these make that a test failure. See tests/guards/README.md.
 guard-tests:
-	backend/.venv/bin/pytest tests/guards -q
+	$(PY) -m pytest tests/guards -q
 
 # Full gate — everything. preflight runs first so a missing toolchain is named, not cryptic.
-check: preflight guard-tests policy harness backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
+check: preflight guard-tests policy harness infra-lint backend{% if include_frontend %} frontend{% endif %}{% if include_docs_site %} docs-site{% endif %}
 
 # Convenience aliases referenced in CLAUDE.md and the PR template.
 test:
@@ -105,6 +113,25 @@ release-preflight:
 	@test -n "$(TAG)" || { echo "usage: make release-preflight TAG=v1.2.3"; exit 1; }
 	python3 scripts/release_preflight.py --tag "$(TAG)"
 
+# ---- Infrastructure lint: the workflows and the Dockerfiles -------------------
+# actionlint (workflow syntax, expressions, action inputs), zizmor (workflow SECURITY:
+# template injection, a credential left in the checkout, an unpinned action) and hadolint
+# (Dockerfiles). actionlint used to be fetched inline by the CI job, so `make check` never
+# ran it and the template self-test never linted a generated project's workflows at all.
+# One definition here; CI, the self-test and a developer all run this target.
+#
+# actionlint and hadolint are single binaries with no package manager: scripts/ci_tools.sh
+# fetches them by version and verifies the checksum on EVERY run. zizmor ships on PyPI and
+# is pinned in requirements-ci.txt with the other scanners (install it into the venv with
+# `backend/.venv/bin/pip install -c requirements-ci.txt zizmor`; `make preflight` says so).
+# zizmor runs offline: its online audits need a token and a network, and a gate whose
+# result depends on either passes differently in two places.
+infra-lint:
+	scripts/ci_tools.sh "$(CI_TOOLS)" && \
+	"$(CI_TOOLS)/actionlint" -color && \
+	$(ZIZMOR) --no-online-audits --min-severity medium .github/workflows && \
+	git ls-files -z '*Dockerfile*' | xargs -0 "$(CI_TOOLS)/hadolint"
+
 # ---- The harness: lint the files that check everything else -----------------
 # `make backend` runs ruff and black over backend/ only, so until this target existed the
 # guards, their fault tests and the session hooks were the one part of the repository nothing
@@ -118,8 +145,8 @@ release-preflight:
 # Deliberately NOT mypy --strict. That would arrive with several hundred findings on day one,
 # which is the same trap from the other side. Worth doing as its own piece of work.
 harness:
-	backend/.venv/bin/ruff check --config ruff-harness.toml scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %} && \
-	backend/.venv/bin/black --check -l 100 scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %}
+	$(PY) -m ruff check --config ruff-harness.toml scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %} && \
+	$(PY) -m black --check -l 100 scripts tests/guards{% if include_claude_hooks %} .claude/hooks{% endif %}
 
 # ---- SAST: the two Semgrep scans, ONE definition ----------------------------
 # The CI `sast` job and the template self-test both run this target rather than relisting

@@ -606,9 +606,9 @@ def test_the_harness_config_exists_and_is_used_by_both():
     assert config.is_file(), "ruff-harness.toml is missing, so `make harness` lints nothing"
     assert "ruff-harness.toml" in _harness_target()
     ci_runs = "\n".join(s.get("run", "") for s in _workflow(CI)["jobs"]["static"]["steps"])
-    assert "ruff-harness.toml" in ci_runs, (
-        "CI lints the harness with a different configuration from `make harness` — the two "
-        "would then disagree about what clean means"
+    assert "make harness" in ci_runs, (
+        "CI lints the harness other than through `make harness` — the two would then "
+        "disagree about what clean means"
     )
 
 

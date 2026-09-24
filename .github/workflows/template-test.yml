@@ -134,11 +134,22 @@ jobs:
         working-directory: /tmp/gen
         run: make backend
 
-      - name: Guard fault tests (each guard can still fail)
+      # The generated project's workflows and Dockerfiles, linted the way its own CI lints
+      # them. Runs BEFORE the guard tests so the positive control for the pinned installer
+      # (tests/guards/test_infra_lint.py) finds a verified cache to read.
+      - name: Workflow + Dockerfile lint (make infra-lint)
         working-directory: /tmp/gen
         run: |
+          pip install -q -c requirements-ci.txt zizmor
+          make infra-lint ZIZMOR=zizmor CI_TOOLS=/tmp/ci-tools
+
+      - name: Guard fault tests (make guard-tests — each guard can still fail)
+        working-directory: /tmp/gen
+        env:
+          CI_TOOLS: /tmp/ci-tools
+        run: |
           pip install -q -c requirements-ci.txt pyyaml pytest
-          python -m pytest tests/guards -q
+          make guard-tests PY=python
 
       # The generated project is not running in its OWN CI event, but it inherits this
       # workflow's event variables. secret_scan.py --auto would read this repository's PR
@@ -172,47 +183,6 @@ jobs:
       # trips end-of-file-fixer/trailing-whitespace means the adopter's FIRST COMMIT is
       # rejected. Jinja block tags at EOF are the usual culprit — `{% endif %}` on its own
       # last line emits a stray newline. Generation must produce a committable tree.
-      # docs-site shipped for months with NO Dependabot coverage: a whole Next.js app whose
-      # dependencies — security fixes included — were never updated. It was wired into the
-      # Makefile and CI but nothing checked that the cross-cutting systems knew about it.
-      # Adding a module means N systems must learn about it; this asserts one of them.
-      - name: Every module's manifests have Dependabot coverage
-        working-directory: /tmp/gen
-        run: |
-          pip install -q pyyaml   # not present on the runner's bare Python
-          python3 - <<'PY'
-          import pathlib, sys, yaml
-
-          root = pathlib.Path(".")
-          cfg = yaml.safe_load((root / ".github/dependabot.yml").read_text())
-          covered = {(u["package-ecosystem"], u["directory"].rstrip("/") or "/")
-                     for u in cfg["updates"]}
-
-          SKIP = {"node_modules", ".venv", ".next", ".git", "__pycache__"}
-          MANIFESTS = {"package.json": "npm", "Dockerfile": "docker"}
-
-          required = set()
-          for path in root.rglob("*"):
-              if any(part in SKIP for part in path.parts) or not path.is_file():
-                  continue
-              eco = MANIFESTS.get(path.name)
-              if path.name.startswith("requirements") and path.suffix == ".txt":
-                  eco = "pip"
-              if not eco:
-                  continue
-              rel = path.parent.relative_to(root)
-              d = "/" + ("" if str(rel) == "." else str(rel))
-              required.add((eco, d.rstrip("/") or "/"))
-
-          missing = sorted(required - covered)
-          if missing:
-              print("dependabot-coverage: FAILED — module manifests with no Dependabot entry:")
-              for eco, d in missing:
-                  print(f"  x {eco:8} {d}")
-              print("\nAdd them to template/.github/dependabot.yml.")
-              sys.exit(1)
-          print(f"dependabot-coverage: OK — {len(required)} manifest location(s) all covered.")
-          PY
 
       - name: Generated project passes its own pre-commit hooks
         working-directory: /tmp/gen

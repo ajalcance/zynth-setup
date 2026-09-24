@@ -141,6 +141,20 @@ def test_the_ci_shape_is_not_blind(tmp_path, cache):
     assert status.returncode == LEAK, "a committed secret on a clean tree was not found"
 
 
+def test_a_scheduled_run_reads_the_whole_history(tmp_path, cache):
+    """On main, origin/main..HEAD is empty; refusing it would redden every Monday."""
+    guard = _sandbox(tmp_path)
+    env = {
+        **cache,
+        "GITHUB_EVENT_NAME": "schedule",
+        "GITHUB_BASE_REF": "",
+        "GITHUB_EVENT_BEFORE": "",
+    }
+    result = run_guard(guard, "--auto", cwd=tmp_path, env=env)
+    assert result.returncode == CLEAN, result.stdout + result.stderr
+    assert "scheduled run — full history" in result.stdout
+
+
 def test_a_secret_outside_the_range_is_not_reported(tmp_path, cache):
     """The range is honoured, or every scan re-reports history and the signal drowns."""
     guard = _sandbox(tmp_path)

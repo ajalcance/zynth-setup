@@ -198,6 +198,34 @@ Pin by commit and keep the tag in a comment for the reader. When two places run 
 tool, hold them to one version: two scanners disagree about what a secret looks like.
 """
 
+[[pattern]]
+id = "EXP-0018"
+title = "A runtime declared in six places"
+enforcement = "guard"
+enforced_by = ["tests/guards/test_runtime_versions.py"]
+paths = ["*Dockerfile*", ".nvmrc", ".devcontainer/*", ".github/workflows/*.yml", "backend/pyproject.toml"]
+guidance = """
+The Dockerfile, the CI matrix, pyproject, the devcontainer, .nvmrc and engines each declare
+the runtime, and each is right about itself. The devcontainer ran Node 20 while everything
+else said 22, and nothing noticed. Name one source — the image, because production runs
+it — and check every other declaration against it. Do not try to reduce the declarations:
+each tool reads its own file. Reduce the number of places that can be WRONG.
+"""
+
+[[pattern]]
+id = "EXP-0019"
+title = "A gate that ran everywhere except where the developer runs"
+enforcement = "guard"
+enforced_by = ["tests/guards/test_infra_lint.py"]
+paths = [".github/workflows/*.yml", "Makefile", "scripts/ci_tools.sh"]
+guidance = """
+actionlint was fetched and run inline by the CI job. Correct, pinned, checksummed — and
+absent from `make check`, so a developer learned about a broken workflow from CI, and
+absent from the template self-test, which never linted a generated project's workflows at
+all. A command that lives only in a workflow step is a gate with one invocation. Put the
+command in the Makefile and have CI, the self-test and the developer call the target.
+"""
+
 {% if include_deploy %}
 [[pattern]]
 id = "EXP-0014"

@@ -50,7 +50,7 @@ ruleset so the guardrails can't be edited away — see [`docs/decisions/0004-age
 - **Backend:** Python 3.12 · FastAPI · SQLAlchemy 2.0 (async) · Alembic
 {% if include_frontend %}- **Frontend:** Next.js
 {% endif %}{% if include_deploy %}- **Infra:** Docker Compose · Caddy
-{% endif %}- **Gates:** ruff · black · mypy --strict · bandit · pip-audit · Semgrep · gitleaks · doc-guards
+{% endif %}- **Gates:** ruff · black · mypy --strict · bandit · pip-audit · Semgrep · gitleaks · actionlint · zizmor · hadolint · doc-guards
 
 ## License
 

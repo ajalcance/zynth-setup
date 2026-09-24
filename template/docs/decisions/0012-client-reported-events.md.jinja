@@ -1,4 +1,4 @@
-# 0012. Client-reported events are data, never evidence
+{% if include_compliance_spine %}# 0012. Client-reported events are data, never evidence
 
 Date: 2026-08-19
 
@@ -106,3 +106,19 @@ what it saw, never who saw it**:
   the framework ships the boundary and the endpoint, and the application decides what to send.
 - Cost: one column, one migration, one route, one dependency, and two registry entries per client
   action. Bounded by the same coverage guards every other action already satisfies.
+{% else %}# 0012. Client-reported events are data, never evidence
+
+Date: 2026-08-19
+
+## Status
+
+Not adopted — this project was generated without the compliance spine (`include_compliance_spine`
+is false), and the client/server trust boundary this decision draws exists only there.
+
+The number is kept so the decision log stays contiguous: an ADR that other projects from the
+same template cite by number must mean the same thing here, and a gap reads as a deleted
+decision. If the spine is added later (`copier update --data include_compliance_spine=true`),
+this file is replaced by the full record: client-reported events carry `source=client`, are
+never sealed into the audit chain as evidence, and are ingested only through an authenticated,
+server-attributed path.
+{% endif %}

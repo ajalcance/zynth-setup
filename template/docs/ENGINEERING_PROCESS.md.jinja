@@ -56,7 +56,10 @@ is concentrated on **authority and policy** changes while routine work is checke
 | CI | **Guard fault tests** — negative tests proving each guard can still fail | `[CI]` (`tests/guards/`) |
 | CI | Required aggregate `ci-complete` | `[CI]` |
 | CI | Semantic correctness of a change | `[Review]` — human judgment |
-| CI | Workflow linting (actionlint, pinned + checksummed) and shell linting (shellcheck) | `[CI]` |
+| CI | **Infrastructure lint** — actionlint + zizmor on the workflows, hadolint on the Dockerfiles; one definition (`make infra-lint`), binaries pinned + checksummed; shellcheck via pre-commit | `[CI]` |
+| CI | **Runtime versions agree** — every Python/Node declaration is checked against the image and `.nvmrc` | `[CI]` (`tests/guards/test_runtime_versions.py`) |
+| CI | **Dependabot covers every manifest** — derived from the tree, in the project | `[CI]` (`tests/guards/test_dependabot_coverage.py`) |
+| CI | **Post-merge reuse** — a tree the PR run proved (same tree hash, `ci-complete` by Actions) is not re-proved; audits always run; the weekly run is full | `[CI]` (`reuse` job, `tests/guards/test_ci_reuse.py`) |
 | Release | Tag must be an ancestor of `main`; cosign-signed images by digest{% if include_deploy %}; verified on the host by `deploy/verify.sh`{% endif %} | `[CI]`{% if not include_deploy %} (enable the deploy module){% endif %} |
 | Release | Readiness verdict recorded inside the signed evidence and read from there, never re-scanned | {% if include_deploy %}`[CI]` (`release_evidence`){% else %}`[Review]` (enable the deploy module){% endif %} |
 | Release | Build-once candidate, SBOM, digest-pinned signed evidence, promote-without-rebuild | {% if include_deploy %}`[CI]` (`release.yml` + `release_evidence`){% else %}`[Review]` (enable the deploy module){% endif %} |

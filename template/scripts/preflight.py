@@ -53,6 +53,14 @@ def _check_backend(problems: list[tuple[str, str]]) -> None:
                 "cd backend && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt",
             )
         )
+    # Pinned with the CI scanners, not the backend dev tools: one source for its version.
+    if not (venv / "bin" / "zizmor").exists():
+        problems.append(
+            (
+                "zizmor is not installed (`make infra-lint`, part of `make check`, needs it)",
+                "backend/.venv/bin/pip install -c requirements-ci.txt zizmor",
+            )
+        )
 
 
 def _check_node(problems: list[tuple[str, str]]) -> None:

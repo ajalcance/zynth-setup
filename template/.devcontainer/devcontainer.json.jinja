@@ -2,7 +2,7 @@
   "name": "{{ project_name }} — sandboxed dev",
   "build": { "dockerfile": "Dockerfile" },
   "features": {
-    "ghcr.io/devcontainers/features/node:1": { "version": "20" }
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
   },
   "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
   "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",

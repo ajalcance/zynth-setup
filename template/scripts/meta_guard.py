@@ -130,8 +130,12 @@ SENSITIVE_PATH_RE = re.compile(
 # Config files that can exempt code from a scanner — the suppression ratchet's blind spot.
 EXEMPTION_FILE_RE = re.compile(
     r"(^|/)\.gitleaks\.toml$|(^|/)pyproject\.toml$|^\.semgrep/.*\.ya?ml$|(^|/)\.semgrepignore$"
+    r"|(^|/)\.hadolint\.ya?ml$"
 )
 EXEMPTION_LINE_RE = re.compile(r"\b(ignore|exclude|omit|allowlist|skip)\b", re.IGNORECASE)
+# A file whose only content is exemptions: every added line counts, keyword or not, because
+# the keyword (`ignored:`) sits on the unchanged parent line and the rule id is what gets added.
+EXEMPTION_ONLY_FILE_RE = re.compile(r"(^|/)\.hadolint\.ya?ml$")
 
 # Numeric floors/ceilings whose movement in one direction is a weakening.
 THRESHOLDS = (
@@ -251,7 +255,11 @@ def check_exemptions(base: str, errors: list[str]) -> None:
             if match:
                 side = after if line.startswith("+") else before
                 side.setdefault(name, []).append(int(match.group(1)))
-        if EXEMPTION_FILE_RE.search(current_file) and EXEMPTION_LINE_RE.search(body):
+        exemption_line = EXEMPTION_FILE_RE.search(current_file) and EXEMPTION_LINE_RE.search(body)
+        content = body.strip()
+        if EXEMPTION_ONLY_FILE_RE.search(current_file) and content and not content.startswith("#"):
+            exemption_line = True
+        if exemption_line:
             if line.startswith("+"):
                 added += 1
             else:

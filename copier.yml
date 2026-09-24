@@ -153,8 +153,11 @@ _tasks:
   - >-
     python3 -m venv backend/.venv
     && backend/.venv/bin/pip install -q -r backend/requirements.txt -r backend/requirements-dev.txt pre-commit
+    && backend/.venv/bin/pip install -q -c requirements-ci.txt zizmor
     && backend/.venv/bin/pre-commit install
     || echo '❌ SETUP INCOMPLETE — backend deps did not install (offline?). Run `make preflight` for the exact fix.'
+  # (zizmor is pinned with the CI scanners in requirements-ci.txt, not with the backend dev
+  # tools: one source for its version. `make infra-lint`, part of `make check`, needs it.)
   # Invariant: whatever `make check` runs, --trust must have provisioned. `make check` includes
   # the frontend / docs-site gates when those modules are enabled, so their node_modules must
   # exist — otherwise the first `make check` dies with `sh: eslint: command not found`.

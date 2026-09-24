@@ -328,6 +328,11 @@ def auto_base() -> tuple[str | None, bool]:
         before = os.environ["GITHUB_EVENT_BEFORE"]
         print(f"secret-scan: push — base {before[:12]}")
         return before, False
+    if event == "schedule":
+        # main against itself is an empty range, which the scan rightly refuses; a scheduled
+        # run has no diff to own, so it re-reads the whole history instead.
+        print("secret-scan: scheduled run — full history")
+        return None, True
     probe = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", "origin/main^{commit}"],
         cwd=ROOT,

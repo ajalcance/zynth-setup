@@ -1,0 +1,12 @@
+# hadolint — Dockerfile lint, run by `make infra-lint` (locally and in the CI `static` job).
+# Every rule at its default threshold: info and up fails. One rule is ignored, with its reason:
+#
+#   DL3008 (pin apt package versions). Debian removes superseded package versions from its
+#   pool, so a pinned `apt-get install pkg=1.2-3` breaks the build at the next point release
+#   with no security benefit — the base image is already pinned by digest, and Dependabot
+#   moves that digest. The devcontainer image is the only Dockerfile that uses apt.
+#
+# Adding to this list is a scanner exemption: the meta-guard counts it, and it needs the
+# 'allow-exemptions' label like any other.
+ignored:
+  - DL3008

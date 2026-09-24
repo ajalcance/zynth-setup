@@ -70,7 +70,7 @@ jobs:
       # fail closed on a private repo and pass on a public one — the same trigger-dependent
       # blindness that `persist-credentials: false` without `fetch-depth: 0` caused elsewhere.
       # If you make this job stop fetching, drop the credential in the same change.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7 # zizmor: ignore[artipacked] the credential is kept on purpose, see above
         with:
           fetch-depth: 0
 

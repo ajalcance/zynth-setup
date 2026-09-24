@@ -98,6 +98,7 @@ make check          # full local gate
 make policy         # the repository-wide guards — the SAME list CI runs, not a copy of it
 make harness        # lint the guards, their fault tests and the session hooks
 make sast           # both Semgrep scans, the SAME definition CI runs (needs `pip install -c requirements-ci.txt semgrep`)
+make infra-lint     # actionlint + zizmor on the workflows, hadolint on the Dockerfiles (zizmor: `pip install -c requirements-ci.txt zizmor`)
 make backend        # backend only (ruff, black, mypy, bandit, pip-audit, pytest)
 make fmt            # auto-format
 make dod-check      # doc-consistency guards (a subset of `make policy`)

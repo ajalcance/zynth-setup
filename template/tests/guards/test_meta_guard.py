@@ -136,6 +136,27 @@ def test_raising_the_coverage_floor_is_fine(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_growing_the_dockerfile_linter_ignore_list_fails(tmp_path):
+    """hadolint's config is scanner config too — the same blind spot, a different file."""
+    guard = _repo(tmp_path)
+    write(tmp_path / ".hadolint.yaml", "ignored:\n  - DL3008\n")
+    git_commit(tmp_path, "chore: baseline")
+    run(["git", "branch", "-f", BASE], tmp_path)
+    write(tmp_path / ".hadolint.yaml", "ignored:\n  - DL3008\n  - DL3025\n")
+    git_commit(tmp_path, "chore: ignore one more rule")
+    blocked = run_guard(guard, "--base", BASE, "--allow-missing-tests", "--allow-guardrail-change")
+    assert blocked.returncode != 0, "a new hadolint exemption must fail"
+    allowed = run_guard(
+        guard,
+        "--base",
+        BASE,
+        "--allow-missing-tests",
+        "--allow-guardrail-change",
+        "--allow-exemptions",
+    )
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+
+
 def test_growing_a_scanner_exemption_list_fails(tmp_path):
     """Config-level exemptions are the inline suppression scan's blind spot."""
     guard = _repo(tmp_path)
