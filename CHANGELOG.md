@@ -9,6 +9,8 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+## [3.2.1] — 2026-09-25 — dev-dependency advisories, and a repository that follows its template
+
 ### Security — dev dependencies in the generated frontend and docs-site
 
 - vitest 3.2.7 → 4.1.11 (GHSA-82fw-gwwq-j7x9, fixed only in 4.x), js-yaml 4.3.0 → 4.3.2,
