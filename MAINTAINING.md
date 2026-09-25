@@ -90,6 +90,32 @@ Add the question to `copier.yml`, then use it in the relevant `.jinja` files. Tw
   missed — a question with no default that nothing answers breaks every self-test generation,
   including the copier-update gate that only generates from it once it is in a release.
 
+## Update a template lockfile
+
+The frontend and docs-site lockfiles ship to every adopter who enables those modules. Three
+traps, each met on 2026-09-25 (T14):
+
+1. **npm cannot run inside the template directory.** Its name contains `{% if ... %}`, and npm
+   decodes the `%` as a URI escape ("URI malformed"). Work in a copy under `.copier-test/`:
+
+   ```bash
+   mkdir -p .copier-test/fe-work
+   cp "template/{% if include_frontend %}frontend{% endif %}/package"*.json .copier-test/fe-work/
+   ```
+
+2. **npm 10.9's peer resolver crashes** (`reading 'edgesOut'`) on a major bump such as vitest
+   3 → 4. Resolve with npm 11 (`npx --yes npm@11 install`), which writes the same lockfile
+   format; then prove the result with the npm adopters run — `npm ci` under Node 22's npm 10,
+   in a generated project.
+3. **Audit everything, not only production.** The gate runs `npm audit --omit=dev`, so dev-only
+   advisories never turn it red; before copying the lockfile back, `npm audit` must report 0
+   with dev included. Take a patched version that has been public at least 7 days — Dependabot's
+   security updates ignore the cooldown and once proposed a release published that morning.
+
+Copy only `package.json` and `package-lock.json` back, list every version the diff moved
+(production entries especially), and run `make verify` plus the frontend and docs-site gates
+in the generated full project.
+
 ## Propagate template updates to existing projects
 
 Generated projects record their answers in `.copier-answers.yml`. In such a project:

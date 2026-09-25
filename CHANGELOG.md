@@ -9,6 +9,14 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### Security — dev dependencies in the generated frontend and docs-site
+
+- vitest 3.2.7 → 4.1.11 (GHSA-82fw-gwwq-j7x9, fixed only in 4.x), js-yaml 4.3.0 → 4.3.2,
+  browserslist 4.28.6 → 4.29.1 and brace-expansion to patched releases, in both lockfiles. All
+  dev-only, so no production bundle changes (one browser-support data table refreshed); a full
+  `npm audit`, dev included, now reports 0 in both apps. **On update:** the frontend's
+  `vitest` devDependency moves from `^3` to `^4`; the shipped tests and config run unchanged.
+
 ### Template repository (no change for adopters)
 
 - The repository now follows the template it ships: `make check` (lint, policy, fault tests)

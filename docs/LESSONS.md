@@ -30,5 +30,10 @@ adopters live in `template/docs/LESSONS.md`.
 - **A test that reads the working tree passes on the machine that wrote it.** The cited-paths
   check resolved against the disk, where an ignored local settings file existed; CI's clean
   checkout failed it. Resolve against `git ls-files`. Green locally is one environment.
+- **A gate that omits dev dependencies never sees their advisories.** Production-only
+  `npm audit` is right for gating; it is not a reason to never look. Turning on Dependabot
+  alerts found eight the self-test could not.
+- **A security update is still a release someone has to read.** Dependabot's security PRs skip
+  the cooldown; one proposed a version published that morning.
 - **A surviving mutant is a missing test.** Two tests once named a bug and did not exercise
   it. (CLAUDE.md 4.)
