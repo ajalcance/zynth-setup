@@ -58,6 +58,15 @@ labels=(
   "allow-exemptions|D93F0B|A justified threshold move or scanner-exemption growth"
   "no-changelog|C5DEF5|Code changed with no user-visible effect, so no CHANGELOG entry"
   "release-blocker|000000|An owner hold: while an issue carries this, releases are denied"
+  # Dependabot's labels. GitHub drops a label that does not exist, so an unprovisioned flag
+  # silently never appears — and `needs-owner` is how a bot's guard bump asks for the owner.
+  "needs-owner|FBCA04|A bot's change to a guard: the owner reviews, then applies guardrail-change"
+  "dependencies|0366D6|A dependency update"
+  "ci|5319E7|Continuous integration and tooling"
+  "backend|1D76DB|Backend"
+  "frontend|0E8A16|Frontend"
+  "docs-site|C2E0C6|Docs site"
+  "docker|0DB7ED|Container images"
 )
 echo
 echo "Provisioning protected-change labels on $repo ..."

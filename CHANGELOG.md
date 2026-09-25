@@ -9,6 +9,23 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### Dependabot no longer approves its own guard changes
+
+- Your `.github/dependabot.yml` labelled scanner bumps `guardrail-change` — the owner's consent
+  label, which the meta-guard reads and passes. A bot applying it approved its own change to
+  what judges every pull request. Bumps to guards (workflows, `requirements-ci.txt`, the hook
+  SHAs) are now **flagged `needs-owner`**: they arrive red on the meta-guard and pass once you
+  have read them and applied `guardrail-change` yourself.
+- Dependabot now updates the **pre-commit hook SHAs** too — the config promised it, and no
+  ecosystem did it.
+- `scripts/bootstrap-repo.sh` provisions every label Dependabot applies (`needs-owner` and the
+  ecosystem labels); GitHub silently drops a label that does not exist.
+- `pre-commit` was pinned at 4.6.2 for CI and 4.6.1 for local development; now one version, and
+  a guard fails if any tool is pinned at two.
+- **On update:** re-run `scripts/bootstrap-repo.sh` once to create `needs-owner`. Any open
+  Dependabot PR still carrying `guardrail-change` was never approved by you — review it, or
+  close it and let Dependabot re-propose.
+
 ## [3.2.1] — 2026-09-25 — dev-dependency advisories, and a repository that follows its template
 
 ### Security — dev dependencies in the generated frontend and docs-site
