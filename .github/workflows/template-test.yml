@@ -176,13 +176,14 @@ jobs:
       # base and try to resolve it in the generated project, which has no remote at all —
       # and refuse, correctly. Cleared, --auto takes the local path: no origin, so it scans
       # the tracked files, which is exactly what a freshly generated project is.
+      #
+      # Unset in the shell, NOT blanked in `env:`. GitHub silently ignores a step that sets a
+      # default GITHUB_* variable: the log header shows it empty, the process still sees
+      # `pull_request`. Every push run passed, so the first pull request was the first run to
+      # notice — it refused, correctly, on an origin/main the generated project cannot have.
       - name: Repository policy gates (make policy)
         working-directory: /tmp/gen
-        env:
-          GITHUB_EVENT_NAME: ""
-          GITHUB_BASE_REF: ""
-          GITHUB_EVENT_BEFORE: ""
-        run: make policy
+        run: env -u GITHUB_EVENT_NAME -u GITHUB_BASE_REF -u GITHUB_EVENT_BEFORE make policy
 
       - name: Lint the harness (make harness)
         working-directory: /tmp/gen
