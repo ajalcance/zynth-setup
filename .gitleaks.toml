@@ -1,0 +1,23 @@
+# Gitleaks config for the TEMPLATE repository itself — the same rules the template ships
+# (template/.gitleaks.toml.jinja), held to the same narrowness. scripts/secret_scan.py (a
+# byte-identical copy of the template's, enforced by tests/test_vendored_copies.py) plants a
+# canary in every tree this repository tracks, template/ included, and fails if any is missed.
+
+title = "zynth-setup gitleaks config"
+
+[extend]
+useDefault = true
+
+# Placeholders by value, never by directory. The one path is the example env file, which in
+# this repository is still a template (`.env.example.jinja`).
+[allowlist]
+description = "Allow placeholder values, never whole directories"
+paths = [
+  '''\.env\.example(\.jinja)?$''',
+]
+regexes = [
+  '''CHANGE_ME.*''',
+  '''openssl rand''',
+  '''placeholder''',
+  '''example\.com''',
+]

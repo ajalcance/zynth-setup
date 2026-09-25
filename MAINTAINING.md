@@ -41,7 +41,22 @@ cd /tmp/gen-demo/backend && python -m venv .venv && . .venv/bin/activate \
 Try variants too: a different `--data python_package=svc`, `--data license=MIT`, and the optional
 toggles once their payloads exist.
 
-**Before generating from a locally modified tree, run both:**
+**Before pushing, run the repository's own gate:**
+
+```bash
+make venv    # once: a root .venv with the pinned tools (requirements-selftest.txt)
+make check   # lint + policy + test — the same target CI's `repo` job runs
+```
+
+`make check` is what this repository asks of itself, held to the rules it ships: ruff and black
+on the root harness, shellcheck, actionlint and zizmor on the workflows, the secret scan with its
+canary over this repository's history, unicode hazards, exact pins, the two checks below, the
+owner-tier check, and fault tests for every root guard (`tests/`). `scripts/secret_scan.py` and
+`scripts/check_unicode_hazards.py` are byte-identical copies of the template's — change the
+template's and copy it over; `tests/test_vendored_copies.py` fails on any drift.
+
+The two checks that matter most **before generating from a locally modified tree** (both are
+in `make policy`):
 
 ```bash
 ./scripts/check-tracked-ignores.sh
@@ -65,8 +80,14 @@ instead. Same family as never interpolating a copier value into a linted line.
 
 ## Add a new prompt
 
-Add the question to `copier.yml`, then use it in the relevant `.jinja` files. Keep sensible
-defaults so `--defaults` generation stays green.
+Add the question to `copier.yml`, then use it in the relevant `.jinja` files. Two kinds:
+
+- **A preference** gets a sensible default, so `--defaults` generation stays green.
+- **The owner's decision** gets no default and a validator, joins `OWNER_TIER` in
+  `scripts/check-owner-questions.py`, is named in `_message_before_copy`, and gets an answer in
+  `.github/self-test-owner.yml`. The check fails, naming the question, if any of those is
+  missed — a question with no default that nothing answers breaks every self-test generation,
+  including the copier-update gate that only generates from it once it is in a release.
 
 ## Propagate template updates to existing projects
 

@@ -1,0 +1,9 @@
+# One fingerprint per line: <commit>:<file>:<rule>:<line>. Each is a VERIFIED fake, in history
+# that cannot be rewritten because a published tag contains it (tags are never re-pointed).
+# A fingerprint names one commit, one file, one rule and one line — it cannot hide a new
+# secret. Never add a path or a rule here; widen nothing. tests/test_repo_policy.py checks
+# every entry names a commit that exists and carries a reason.
+#
+# ce600fa: a test fixture — an RSA key header around the body "AAAA", written before the
+# template assembled fake keys at run time. In v3.0.0 and every later tag.
+ce600fa0fd4ac2e1a9771b9a8e648af6715b4d20:template/tests/guards/test_agent_policy.py:private-key:266

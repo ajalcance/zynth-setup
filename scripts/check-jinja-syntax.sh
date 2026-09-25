@@ -14,15 +14,18 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-python3 - "$here" <<'PYEOF'
+"${PYTHON:-python3}" - "$here" <<'PYEOF'
 import sys
 from pathlib import Path
 
+# REFUSED, never skipped. This used to print "SKIPPED" and exit 0 when jinja2 was missing, so
+# a maintainer's local run read green while parsing nothing — the empty-set trap this
+# repository's own guards are built to refuse. Exit 2: "could not check" is its own outcome.
 try:
     from jinja2 import Environment, TemplateSyntaxError
 except ImportError:
-    print("jinja-syntax: SKIPPED — jinja2 is not installed (pip install jinja2)")
-    raise SystemExit(0)
+    print("jinja-syntax: REFUSED — jinja2 is not installed, so nothing was parsed. Run `make venv`.")
+    raise SystemExit(2)
 
 root = Path(sys.argv[1]) / "template"
 env = Environment()
@@ -30,11 +33,12 @@ checked = 0
 failures = []
 
 for path in sorted(root.rglob("*")):
-    if not path.is_file():
-        continue
-    # A conditional in a PATH is rendered too, so a bad one breaks generation just as surely.
+    # A conditional in a PATH is rendered too, so a bad one breaks generation just as surely —
+    # and the module toggles live in DIRECTORY names (`{% if include_deploy %}deploy...`). This
+    # used to skip every directory, so a broken toggle compiled "OK" until copier hit it.
+    body = path.is_file() and path.suffix == ".jinja"
     for text, where in ((path.name, "name"), *([(path.read_text(errors="ignore"), "body")]
-                                               if path.suffix == ".jinja" else [])):
+                                               if body else [])):
         if "{" not in text:
             continue
         checked += 1

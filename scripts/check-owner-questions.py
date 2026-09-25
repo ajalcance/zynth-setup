@@ -36,12 +36,21 @@ def main() -> int:
             errors.append(f"{name}: not a question in copier.yml")
             continue
         if "default" in question:
-            errors.append(f"{name}: has a default ({question['default']!r}) — --defaults would answer it for the owner")
+            errors.append(
+                f"{name}: has a default ({question['default']!r}) — "
+                "--defaults would answer it for the owner"
+            )
         # A bool has no empty form, and `choices` refuse anything outside the list.
-        if question.get("type") != "bool" and "choices" not in question and "validator" not in question:
+        if (
+            question.get("type") != "bool"
+            and "choices" not in question
+            and "validator" not in question
+        ):
             errors.append(f"{name}: no validator — an explicit empty answer would pass")
         if name not in before:
-            errors.append(f"{name}: not named in _message_before_copy — the agent is not told to ask")
+            errors.append(
+                f"{name}: not named in _message_before_copy — the agent is not told to ask"
+            )
 
     for name, gate in CONDITIONAL.items():
         question = config.get(name, {})
@@ -77,7 +86,9 @@ def main() -> int:
         for e in errors:
             print(f"  x {e}")
         return 1
-    print("owner-questions: OK — no defaults, validators present, every one announced to the agent.")
+    print(
+        "owner-questions: OK — no defaults, validators present, every one announced to the agent."
+    )
     return 0
 
 

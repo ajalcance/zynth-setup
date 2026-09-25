@@ -18,6 +18,13 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same pull request makes the older run's answer irrelevant — and GitHub
+# bills every job rounded up to a full minute. main and the schedule are never cancelled: each
+# of those runs is the evidence a release tag cites.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   generate-and-gate:
     runs-on: ubuntu-latest
@@ -60,6 +67,9 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0 # tags must be visible for the copier-update gate
+          # Nothing here pushes. A token left in .git/config is readable by every later step
+          # and every tool it installs (zizmor: artipacked) — the template's rule, held here.
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -80,11 +90,13 @@ jobs:
       # breaks with no filename and a line number into the rendered stream. This names both.
       - name: Every template compiles as Jinja
         run: |
-          pip install -q jinja2
+          pip install -q -c requirements-selftest.txt jinja2
           ./scripts/check-jinja-syntax.sh
 
+      # Pinned (requirements-selftest.txt). `pipx install copier` took whatever the index held
+      # that day, so a copier release changed what this self-test proved with no diff here.
       - name: Install Copier
-        run: pipx install copier
+        run: pip install -q -c requirements-selftest.txt copier
 
       # The owner tier (owner, maintainer, license, review posture) has no defaults, so an
       # agent generating with --defaults cannot answer for the owner. This proves the refusal
@@ -92,7 +104,7 @@ jobs:
       # told to ask (scripts/check-owner-questions.py reads copier.yml).
       - name: The owner tier has no defaults — an agent cannot answer for the owner
         run: |
-          pip install -q pyyaml
+          pip install -q -c requirements-selftest.txt pyyaml
           python3 scripts/check-owner-questions.py
           rm -rf /tmp/nodata
           if copier copy --defaults --trust --vcs-ref HEAD --data project_name="No Data" . /tmp/nodata 2>/tmp/nodata.err; then
@@ -204,7 +216,7 @@ jobs:
       - name: Generated project passes its own pre-commit hooks
         working-directory: /tmp/gen
         run: |
-          pip install pre-commit
+          pip install -q -c requirements-ci.txt pre-commit
           git add -A
           pre-commit run --all-files --show-diff-on-failure
 
@@ -307,3 +319,55 @@ jobs:
             echo "::warning::copier update produced conflict markers to resolve (expected on overlapping edits)"
           fi
           echo "copier-update gate: OK — update from $prev applied, user edit preserved."
+
+  # ---- The repository's own gate ----------------------------------------------------------
+  # Everything above proves what the template GENERATES. Nothing proved the template
+  # repository itself: its workflow went unlinted, its history unscanned, its guards untested.
+  # One definition — the root Makefile — run here and by a maintainer before pushing.
+  repo:
+    name: repo (make check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0 # the secret scan diffs against the base branch and walks history
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install the pinned tools
+        run: pip install -q -c requirements-selftest.txt copier jinja2 pyyaml pytest ruff black zizmor
+
+      - name: Lint, policy and fault tests (make check)
+        env:
+          # secret_scan.py --auto reads these to pick its range. EVENT_BEFORE is not a default
+          # variable, so setting it here works; the defaults cannot be overridden (see the
+          # policy step above, and tests/test_repo_policy.py).
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        run: make check PY=python3 ZIZMOR=zizmor CI_TOOLS=/tmp/ci-tools
+
+  # ---- The one check a ruleset requires -------------------------------------------------
+  # A matrix posts one check per leg, and a leg renamed or added is a required check that never
+  # posts — which blocks every pull request, or is quietly dropped from the ruleset. This job
+  # always runs and passes only when every job it needs succeeded.
+  ci-complete:
+    needs: [generate-and-gate, repo]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify every gate passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "gate results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "::error title=CI incomplete::A required gate did not pass ($r). Fix it — do not make it non-required."
+              exit 1
+            fi
+          done
+          echo "All gates green."
