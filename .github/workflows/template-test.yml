@@ -112,12 +112,8 @@ jobs:
       - name: Generate project
         run: |
           copier copy --defaults --trust --vcs-ref HEAD \
+            --data-file .github/self-test-owner.yml \
             --data project_name="${{ matrix.pname }}" \
-            --data github_owner="ci" \
-            --data author_name="CI" \
-            --data author_email="ci@example.com" \
-            --data license="Apache-2.0" \
-            --data solo_maintainer=true \
             ${{ matrix.extra }} \
             . /tmp/gen
 
@@ -289,8 +285,8 @@ jobs:
           echo "Updating a project generated from $prev up to the current tree..."
           rm -rf /tmp/upd
           copier copy --defaults --trust --vcs-ref "$prev" \
+            --data-file "$GITHUB_WORKSPACE/.github/self-test-owner.yml" \
             --data project_name="Update Test" \
-            --data github_owner="ci" --data author_name="CI" --data author_email="ci@example.com" \
             --data include_frontend=true --data include_docs_site=true \
             --data include_deploy=true --data server_host=example.test \
             --data include_compliance_spine=true \

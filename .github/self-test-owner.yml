@@ -1,0 +1,13 @@
+# The owner's answers for every self-test generation — ONE definition.
+#
+# The owner tier has no defaults (copier.yml), so every `copier copy` in template-test.yml
+# must answer it. Two steps each listed the answers by hand; when v3.1.0 made `license` and
+# `solo_maintainer` mandatory, the main step was updated and the copier-update step — which
+# generates from the PREVIOUS release, so it only broke once v3.1.0 was that release — was
+# not. scripts/check-owner-questions.py fails if this file stops answering exactly the
+# owner tier. Module choices stay per step: they are what each step is testing.
+github_owner: ci
+author_name: CI
+author_email: ci@example.com
+license: Apache-2.0
+solo_maintainer: true

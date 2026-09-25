@@ -17,6 +17,10 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OWNER_TIER = ("github_owner", "author_name", "author_email", "license", "solo_maintainer")
 CONDITIONAL = {"server_host": "include_deploy"}  # asked only with the module; then required
+# No default, and deliberately not the owner's: each self-test run names its own project.
+PER_RUN = ("project_name",)
+# The owner's answers for every self-test generation. See the file for why it is one file.
+SELF_TEST_ANSWERS = ROOT / ".github" / "self-test-owner.yml"
 
 
 def main() -> int:
@@ -47,6 +51,25 @@ def main() -> int:
             errors.append(f"{name}: validator must refuse an empty answer when {gate} is on")
         if name not in before:
             errors.append(f"{name}: not named in _message_before_copy")
+
+    # The population, not the list: a question with no default that is neither owner tier nor
+    # per-run is one nothing answers — every `copier copy --defaults` in the self-test dies on
+    # it, and the step that dies may be one that only runs once the next release is tagged.
+    for name, question in config.items():
+        if name.startswith("_") or not isinstance(question, dict) or "default" in question:
+            continue
+        if name not in OWNER_TIER and name not in PER_RUN:
+            errors.append(f"{name}: no default, but not in OWNER_TIER — nothing answers it")
+
+    answers = yaml.safe_load(SELF_TEST_ANSWERS.read_text()) if SELF_TEST_ANSWERS.is_file() else None
+    if not isinstance(answers, dict):
+        errors.append(f"{SELF_TEST_ANSWERS.relative_to(ROOT)}: missing or not a mapping")
+    elif set(answers) != set(OWNER_TIER):
+        errors.append(
+            f"{SELF_TEST_ANSWERS.relative_to(ROOT)} must answer exactly the owner tier: "
+            f"missing {sorted(set(OWNER_TIER) - set(answers))}, "
+            f"extra {sorted(set(answers) - set(OWNER_TIER))}"
+        )
 
     print(f"owner-questions: inspected {checked} owner-tier question(s) in copier.yml")
     if errors:
