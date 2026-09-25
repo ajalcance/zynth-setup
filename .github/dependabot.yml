@@ -7,35 +7,54 @@
 # cooldown the template enforces: a version public for an hour has not been looked at yet.
 #
 # Changes to the self-test tools and hooks judge every change to this repository, so their
-# bumps carry the guardrail-change label, as the template's scanner bumps do.
+# bumps are FLAGGED with `needs-owner` — never `guardrail-change`. That label is the owner's
+# consent: CI reads it and passes the guard check, and a bot that applies it approves its own
+# change. So a bump arrives red on `guard-label`, and turns green only when the owner has read it
+# and applied `guardrail-change` themselves. tests/test_repo_policy.py fails if any update here
+# applies a label a workflow reads as consent. (The template shipped the same mistake: T12.)
+#
+# `directories: ["/", "/template"]` with one group per ecosystem: Dependabot reads only this
+# file, so without the template directory the template's own pins (its CI manifest, its hook
+# SHAs, its workflow actions) were never proposed at all — and a root bump arrived alone, into a
+# repository that promises one version of each tool (tests/test_shared_pins.py). Grouped across
+# both directories, a shared bump is ONE pull request that moves both. The template's backend
+# manifests are `.jinja` files Dependabot cannot parse; a ruff or black bump there is by hand,
+# and the shared-pin test says so.
+
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: "/"
+    directories: ["/", "/template"]
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    labels: ["dependencies", "ci", "guardrail-change"]
+    labels: ["dependencies", "ci", "needs-owner"]
     groups:
       github-actions:
         patterns: ["*"]
 
   - package-ecosystem: pip
-    directory: "/"
+    directories: ["/", "/template"]
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    labels: ["dependencies", "ci", "guardrail-change"]
+    labels: ["dependencies", "ci", "needs-owner"]
+    groups:
+      pip:
+        patterns: ["*"]
 
   - package-ecosystem: pre-commit
-    directory: "/"
+    directories: ["/", "/template"]
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    labels: ["dependencies", "ci", "guardrail-change"]
+    labels: ["dependencies", "ci", "needs-owner"]
+    groups:
+      pre-commit:
+        patterns: ["*"]

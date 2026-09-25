@@ -19,6 +19,8 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T9 | The confinement hook blocks writes to the agent's session scratch directory, which Claude Code provides outside the project. Consider honouring `permissions.additionalDirectories`. | This repo's session |
 | T10 | The shipped ruleset's `pull_request` rule sets `require_extra_approval_for_unattributed_changes`, which GitHub's REST reference does not document: either the bootstrap is refused or the setting is silently ignored. Verify against the live API; keep only documented parameters, with a test. | Writing this repo's ruleset |
 | T11 | `block_dangerous_bash.py`'s older regex rules scan the WHOLE command line: `git push -u origin feat/x && gh pr create --title "main takes PRs only"` is refused as a direct push to main, and `feat/main-fix` matches `\bmain\b`. They should run per simple command, like the v3.2 token pass. | The hook, live in this repo's own session |
+| T12 | `template/.github/dependabot.yml` labels the scanner bumps `guardrail-change` — the owner's consent label. A bot applying it approves its own guard change and the meta-guard passes. Flag with a label no workflow reads, and let the check stay red until the owner applies consent. | Dependabot's first PRs here arrived pre-approved |
+| T13 | The template pins `pre-commit` twice at different versions: 4.6.2 in `requirements-ci.txt`, 4.6.1 in `backend/requirements-dev.txt.jinja`. One version per tool, tested. | Writing `tests/test_shared_pins.py` |
 
 ## Carried over
 

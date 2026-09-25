@@ -17,6 +17,10 @@ version must sort above the one before it.
   a committed agent policy with the template's hooks; a guard-label check; `make verify` for
   generating and gating every variant; CLAUDE.md, ADRs, lessons and a template backlog;
   rulesets for `main` and release tags, applied by `scripts/bootstrap-repo.sh`.
+- Dependabot no longer applies `guardrail-change` to its own guard bumps — it flags them
+  `needs-owner`, and the guard check stays red until the owner consents. Its updates now cover
+  the template's pins too, grouped so a shared bump moves root and template in one PR; a test
+  holds every shared tool and hook to the template's version.
 - `scripts/check-jinja-syntax.sh` refused nothing without jinja2 installed (it printed SKIPPED
   and passed) and never parsed directory names, where the module toggles live. Both fixed.
 
