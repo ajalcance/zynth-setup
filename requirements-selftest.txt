@@ -11,7 +11,7 @@
 # the tool is shared (pre-commit, pytest, pyyaml, zizmor, ruff, black), so the repository runs
 # one version of each. Checked by `make policy` (template/scripts/check_pins.py); bumps arrive
 # as Dependabot PRs.
-copier==9.17.0
+copier==9.18.2
 jinja2==3.1.6
 pyyaml==6.0.3
 pre-commit==4.6.2
