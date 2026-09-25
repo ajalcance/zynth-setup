@@ -18,9 +18,18 @@
 # this file is one of the places that must learn about it — it silently assumed the wrong
 # thing last time precisely because it isn't a file anyone thinks of as branching-related.
 #
-# `cooldown` is not hygiene, it is the premise an argument already rests on. CI waives the
-# sensitive-path label for Dependabot when a diff touches only manifests, and that waiver
-# assumes the version has been public long enough for a malicious publish to be noticed.
+# Bumps that change a GUARD — the workflows (github-actions), the scanners that judge a pull
+# request (requirements-ci.txt) and the commit hooks (.pre-commit-config.yaml) — are FLAGGED
+# `needs-owner`, never labelled `guardrail-change`. That label is the owner's consent: the
+# meta-guard reads it and passes. A bot that applies it approves its own change to what judges
+# every pull request. A flagged bump arrives red on the meta-guard and turns green only when the
+# owner has read it and applied `guardrail-change` themselves. (This file used to apply it.)
+# tests/guards/test_dependabot_coverage.py fails if any entry applies a label a workflow reads.
+#
+# `cooldown` is not hygiene, it is the premise an argument already rests on. Application
+# manifests are deliberately NOT sensitive paths in the meta-guard (scripts/meta_guard.py), so a
+# Dependabot bump to one merges on green CI with no label — and that rests on the version
+# having been public long enough for a malicious publish to be noticed.
 # Without a cooldown, a version published an hour ago can be proposed immediately — down the
 # shortest automated path to merge in the repository. Encode the premise an argument rests
 # on, or the argument is decoration. tests/guards/test_workflow_invariants.py fails if any
@@ -34,13 +43,13 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    labels: ["dependencies", "ci"]
+    labels: ["dependencies", "ci", "needs-owner"]
     groups:
       github-actions:
         patterns: ["*"]
 
   # The scanners that judge a pull request. Pinned in requirements-ci.txt at the repo root,
-  # and gated by the meta-guard — so a bump here arrives as a PR that needs the owner's label.
+  # and gated by the meta-guard — so a bump here arrives red, flagged for the owner.
   - package-ecosystem: pip
     directory: "/"
     schedule:
@@ -48,7 +57,21 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
-    labels: ["dependencies", "ci", "guardrail-change"]
+    labels: ["dependencies", "ci", "needs-owner"]
+
+  # The commit hooks, pinned by commit SHA in .pre-commit-config.yaml. A pin nothing updates
+  # rots; this entry is what that file's "Dependabot updates these" was promising.
+  - package-ecosystem: pre-commit
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci", "needs-owner"]
+    groups:
+      pre-commit:
+        patterns: ["*"]
 
   - package-ecosystem: pip
     directory: "/backend"
