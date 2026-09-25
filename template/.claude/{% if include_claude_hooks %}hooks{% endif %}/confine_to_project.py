@@ -7,8 +7,14 @@ protect the rest of the machine also blocks the project itself. The dangerous-co
 beside this one names `/`, `~` and `$HOME`, which leaves every sibling project directory fair
 game — and an agent that changes directory first issues no single token that looks dangerous.
 
-So this resolves first and decides second. It expands `~`, `..`, and any `cd` earlier in the
-same command line before asking whether a target is inside the project.
+So this resolves first and decides second. It expands `~` and `..`, and follows each `cd` in
+order — a `cd` moves only the commands AFTER it — before asking whether a target is inside the
+project. The line is read as the shell reads it (`_shell.py`, shared with the dangerous-command
+hook): quotes respected, so `grep "a|b"` is one argument, not a pipe; a redirect counted only
+when it is unquoted; and the command lines inside `$(...)`, backticks, `sh -c` and `eval`
+judged like any other. An earlier version split on `|` before reading quotes, refused everyday
+reads as "unbalanced", judged every command against the LAST `cd`, and never looked inside a
+quoted substitution.
 
 Three design decisions worth keeping:
 
@@ -36,10 +42,16 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import shlex
 import sys
 from pathlib import Path
+
+# The shared parser sits beside this file. An import that fails must not become a pass: main()
+# refuses every command while `_shell` is None, because this hook fails closed.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import _shell
+except Exception:  # noqa: BLE001
+    _shell = None
 
 # Verbs that change or destroy something at a path. `sed` is here only for `-i`; see below.
 DESTRUCTIVE = {
@@ -64,12 +76,9 @@ DESTRUCTIVE = {
 # Writing to a device is not writing to a file. Without this the hook blocks any command that
 # sends output to /dev/null — including the checks inside this repository.
 DEVICES = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "/dev/zero", "/dev/fd"}
-REDIRECT_RE = re.compile(r"(?:\d?>>?|&>)\s*([^\s;|&]+)")
-ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-# A heredoc body is DATA. Prose that mentions a command is not a command — writing a lessons
-# entry that quotes a path must not be read as touching that path.
-HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
-SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\|)\s*")
+# `git` subcommands that overwrite working-tree files from another ref.
+GIT_OVERWRITES = {"checkout", "restore"}
+GIT_GLOBAL_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace"}
 
 
 def project_root() -> Path:
@@ -78,32 +87,6 @@ def project_root() -> Path:
     if given:
         return Path(given).resolve()
     return Path(__file__).resolve().parents[2]
-
-
-def strip_heredocs(command: str) -> str:
-    """Remove heredoc bodies, keeping the line that opens them."""
-    lines = command.splitlines()
-    out: list[str] = []
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        out.append(line)
-        match = HEREDOC_RE.search(line)
-        index += 1
-        if not match:
-            continue
-        terminator = match.group(2)
-        while index < len(lines) and lines[index].strip() != terminator:
-            index += 1
-        index += 1  # skip the terminator itself
-    return "\n".join(out)
-
-
-def split_tokens(segment: str) -> list[str] | None:
-    try:
-        return shlex.split(segment)
-    except ValueError:
-        return None  # unbalanced quoting — see the fail-closed note in main()
 
 
 def resolve(target: str, cwd: Path) -> Path:
@@ -120,12 +103,7 @@ def inside(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
-# `git` subcommands that overwrite working-tree files from another ref.
-GIT_OVERWRITES = {"checkout", "restore"}
-GIT_GLOBAL_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace"}
-
-
-def git_overwrite_targets(tokens: list[str]) -> list[str]:
+def git_overwrite_targets(words: list[str]) -> list[str]:
     """Paths a `git checkout`/`git restore` may overwrite. Judged against `.claude/` only.
 
     A branch name or an option's value read as a path is harmless here — it would have to
@@ -134,119 +112,111 @@ def git_overwrite_targets(tokens: list[str]) -> list[str]:
     `git -C` moves git's directory without a `cd`, and judging these as escapes would be
     guessing.
     """
-    while tokens and ENV_ASSIGNMENT_RE.match(tokens[0]):
-        tokens = tokens[1:]
-    if not tokens or Path(tokens[0]).name != "git":
+    if not words or Path(words[0]).name != "git":
         return []
     index = 1
-    while index < len(tokens) and tokens[index].startswith("-"):
-        index += 2 if tokens[index] in GIT_GLOBAL_WITH_VALUE else 1
-    if index >= len(tokens) or tokens[index] not in GIT_OVERWRITES:
+    while index < len(words) and words[index].startswith("-"):
+        index += 2 if words[index] in GIT_GLOBAL_WITH_VALUE else 1
+    if index >= len(words) or words[index] not in GIT_OVERWRITES:
         return []
-    return [token for token in tokens[index + 1 :] if not token.startswith("-")]
+    return [word for word in words[index + 1 :] if not word.startswith("-")]
 
 
-def write_targets(segment: str) -> tuple[list[str], list[str]]:
-    """(paths this segment writes, reasons it cannot be judged)."""
-    targets: list[str] = []
-    unresolvable: list[str] = []
-
-    # Redirects first: they overwrite regardless of the verb in front of them.
-    for redirect in REDIRECT_RE.findall(segment):
-        cleaned = redirect.strip("\"'")
-        if cleaned in DEVICES or cleaned.startswith("/dev/fd/") or cleaned.startswith("&"):
-            continue
-        targets.append(cleaned)
-
-    tokens = split_tokens(REDIRECT_RE.sub(" ", segment))
-    if tokens is None:
-        return targets, ["the command could not be parsed (unbalanced quotes)"]
-
-    # A leading `NAME=value` is a variable for the command, not a path it writes.
-    # `PATH=/opt/bin make` says where to FIND programs; nearly every command carries one.
-    while tokens and ENV_ASSIGNMENT_RE.match(tokens[0]):
-        tokens.pop(0)
-    if not tokens:
-        return targets, unresolvable
-
-    verb = Path(tokens[0]).name
-    arguments = tokens[1:]
+def write_targets(command) -> list[str]:
+    """Paths this command writes: its redirects, then a destructive verb's arguments."""
+    targets = [
+        target
+        for target in command.writes
+        if target not in DEVICES and not target.startswith("/dev/fd/")
+    ]
+    words = command.words
+    if not words:
+        return targets
+    verb = Path(words[0]).name
+    arguments = words[1:]
     if verb == "sed":
         # Only `sed -i` writes. `sed -n '1,5p' file` reads.
         if not any(a == "-i" or a.startswith("-i") for a in arguments):
-            return targets, unresolvable
+            return targets
     elif verb not in DESTRUCTIVE:
-        return targets, unresolvable
-
+        return targets
     targets.extend(a for a in arguments if not a.startswith("-"))
-    return targets, unresolvable
+    return targets
 
 
-def effective_cwd(segments: list[str], root: Path) -> tuple[Path, list[str]]:
-    """Follow `cd` so a change made after one is judged where it actually lands."""
-    cwd = root
-    problems: list[str] = []
-    for segment in segments:
-        tokens = split_tokens(segment)
-        # Parsed with shlex, not a whitespace regex: this machine's project path contains a
-        # space, and a pattern that stops at whitespace hands back the first word — an
-        # ancestor of the project, and therefore "outside" it. An older version of this hook
-        # used shlex for exactly this reason and a rewrite lost it.
-        if not tokens or Path(tokens[0]).name != "cd":
+class Findings:
+    def __init__(self) -> None:
+        self.escaping: list[str] = []
+        self.into_policy: list[str] = []
+        self.problems: list[str] = []
+
+
+def judge(line: str, root: Path, cwd: Path, findings: Findings, depth: int = 0) -> None:
+    """Judge every command in the line, in order, following each `cd` as it comes."""
+    if depth > 5:
+        findings.problems.append("command substitutions nested deeper than this hook reads")
+        return
+    try:
+        parsed = _shell.commands(line)
+    except ValueError:
+        findings.problems.append("the command could not be parsed (unbalanced quotes)")
+        return
+    policy = root / ".claude"
+    for command in parsed:
+        words = command.words
+        if words and Path(words[0]).name == "cd":
+            destination = [a for a in words[1:] if not a.startswith("-")]
+            if not destination:
+                cwd = Path(os.path.expanduser("~"))
+            elif "$" in destination[0] or "`" in destination[0]:
+                findings.problems.append(
+                    f"`cd {destination[0]}` — this hook will not guess where that lands"
+                )
+            else:
+                cwd = resolve(destination[0], cwd)
             continue
-        destination = [a for a in tokens[1:] if not a.startswith("-")]
-        if not destination:
-            cwd = Path(os.path.expanduser("~"))
-            continue
-        if "$" in destination[0] or "`" in destination[0]:
-            problems.append(f"`cd {destination[0]}` — this hook will not guess where that lands")
-            continue
-        cwd = resolve(destination[0], cwd)
-    return cwd, problems
+        for target in write_targets(command):
+            if "$" in target or "`" in target:
+                findings.problems.append(
+                    f"`{target}` — this hook will not guess what that expands to"
+                )
+                continue
+            resolved = resolve(target, cwd)
+            if not inside(resolved, root):
+                findings.escaping.append(f"{target} → {resolved}")
+            elif inside(resolved, policy):
+                findings.into_policy.append(target)
+        for target in git_overwrite_targets(words):
+            if inside(resolve(target, cwd), policy):
+                findings.into_policy.append(target)
+    # A substitution runs where the command around it runs: the directory reached so far.
+    for inner in _shell.nested(line, parsed):
+        judge(inner, root, cwd, findings, depth + 1)
 
 
 def decide(command: str, root: Path) -> str | None:
     """The reason this command is refused, or None to allow it."""
-    segments = [s for s in SEPARATORS.split(strip_heredocs(command)) if s.strip()]
-    cwd, problems = effective_cwd(segments, root)
+    findings = Findings()
+    judge(command, root, root, findings)
 
-    policy = root / ".claude"
-    escaping: list[str] = []
-    into_policy: list[str] = []
-    for segment in segments:
-        targets, unresolvable = write_targets(segment)
-        problems.extend(unresolvable)
-        for target in targets:
-            if "$" in target or "`" in target:
-                problems.append(f"`{target}` — this hook will not guess what that expands to")
-                continue
-            resolved = resolve(target, cwd)
-            if not inside(resolved, root):
-                escaping.append(f"{target} → {resolved}")
-            elif inside(resolved, policy):
-                into_policy.append(target)
-        for target in git_overwrite_targets(split_tokens(segment) or []):
-            if inside(resolve(target, cwd), policy):
-                into_policy.append(target)
-
-    if into_policy:
+    if findings.into_policy:
         return (
             "this command changes the agent's own policy from the shell:\n  "
-            + "\n  ".join(dict.fromkeys(into_policy))
+            + "\n  ".join(dict.fromkeys(findings.into_policy))
             + "\nNothing under .claude/ may be changed by a shell command. Its settings files are "
             "the owner's to edit by hand; for anything else there, use the Edit tool, where the "
             "permission system can see the change and ask."
         )
-    if escaping:
+    if findings.escaping:
         return (
             "this command changes something outside the project:\n  "
-            + "\n  ".join(escaping)
+            + "\n  ".join(findings.escaping)
             + f"\nThe project is {root}. Reading outside it is fine; changing anything is not."
         )
-    if problems:
+    if findings.problems:
         return (
             "this command cannot be judged safe:\n  "
-            + "\n  ".join(dict.fromkeys(problems))
+            + "\n  ".join(dict.fromkeys(findings.problems))
             + "\nA convoluted one-liner is refused on purpose — the remedy is a simpler "
             "command, never a weaker hook. Split it up, or write the path out in full."
         )
@@ -263,6 +233,12 @@ def main() -> int:
     if not isinstance(command, str) or not command.strip():
         return 0
 
+    if _shell is None:
+        sys.stderr.write(
+            "BLOCKED by .claude/hooks/confine_to_project.py — its parser (_shell.py, beside it) "
+            "could not be imported, so no command can be judged. It fails closed on purpose.\n"
+        )
+        return 2
     reason = decide(command, project_root())
     if reason:
         sys.stderr.write("BLOCKED by .claude/hooks/confine_to_project.py — " + reason + "\n")

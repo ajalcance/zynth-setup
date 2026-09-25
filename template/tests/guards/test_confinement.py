@@ -271,3 +271,72 @@ def test_reading_the_policy_and_ordinary_checkouts_stay_allowed(command):
     """The positive control: reading `.claude/` and switching branches must not be caught."""
     code, message = verdict(command)
     assert code == 0, f"{command!r} was blocked:\n{message}"
+
+
+# --- Read as the shell reads it (backlog T7) ---------------------------------------------
+#
+# The hook split on `|` and `;` before it parsed quotes, judged every command against the LAST
+# `cd` in the line, and never looked inside a quoted substitution. Found by running the hook in
+# the template repository's own agent session, where it refused a dozen ordinary reads.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'grep -n "a\\|b" docs/PLAN.md',
+        "git log --format='%h|%s' -3",
+        'echo "$(git rev-parse HEAD | cut -c1-7)"',
+        'echo "cost > /etc/x is text, not a redirect"',
+        "rm -rf build && cd ~/elsewhere",
+        "cat <<'EOF' > notes.md\nrm -rf ~\nEOF",
+        "make check > /dev/null 2>&1",
+    ],
+)
+def test_an_ordinary_line_is_not_refused(command):
+    code, message = verdict(command)
+    assert code == 0, f"{command!r} was refused:\n{message}"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'echo "$(rm -rf ~/elsewhere)"',
+        "echo `rm -rf ~/elsewhere`",
+        'bash -c "rm -rf ~/elsewhere"',
+        "nice rm -rf ~/elsewhere",
+        "cd ~/elsewhere && rm -rf build",
+        "echo x > ~/.zshrc",
+    ],
+)
+def test_a_change_hidden_in_the_line_is_still_seen(command):
+    assert blocked(command), f"must not be allowed: {command!r}"
+
+
+def test_a_descriptor_is_not_a_file():
+    """`2>&1` names stream 1, and the `2` of `2>` is a stream, not an argument.
+
+    After a `cd` out of the project either one read as a path would be a write outside it.
+    """
+    assert allowed("cd ~/elsewhere && ls 2>&1")
+    assert allowed(f"cd ~/elsewhere && touch '{PROJECT}/notes.md' 2>/dev/null")
+
+
+def test_a_cd_moves_only_the_commands_after_it():
+    """Judged against the FINAL directory, one of these was refused and the other allowed."""
+    assert allowed("rm -rf build && cd ~/elsewhere")
+    assert blocked("cd ~/elsewhere && rm -rf build")
+
+
+def test_without_its_parser_it_refuses_rather_than_passes(tmp_path):
+    """The hook fails closed: a missing _shell.py must not turn every command into a pass."""
+    lonely = tmp_path / "confine_to_project.py"
+    lonely.write_text(HOOK.read_text())
+    result = subprocess.run(
+        [sys.executable, str(lonely)],
+        input=json.dumps({"tool_input": {"command": "ls"}}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(Path.home()), "CLAUDE_PROJECT_DIR": str(PROJECT)},
+    )
+    assert result.returncode == 2 and "could not be imported" in result.stderr

@@ -574,3 +574,79 @@ def test_every_owner_label_is_provisioned():
     constants = _hook_constants()
     missing = (constants["consent"] | constants["hold"]) - provisioned
     assert not missing, f"read by a workflow but never created by bootstrap-repo.sh: {missing}"
+
+
+# --- One command at a time (backlog T11) ---------------------------------------------------
+#
+# The first rules were regexes over the whole line, so words from different commands combined.
+
+
+@hooked
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push -u origin feat/x && gh pr create --fill --title 'main takes PRs only'",
+        "rm -rf .cache/x && cp README.md .",
+        'git commit -m "docs: explain why we never use --no-verify"',
+        "git commit -mnothing-to-see",
+        'git commit -m "-n is the short form of --no-verify"',
+        "git push -u origin feat/main-fix",
+        "gh pr view 5 --json title --jq '.title | ascii_downcase'",
+    ],
+)
+def test_words_from_different_commands_do_not_combine(command, tagged_repo):
+    assert _decision(command, tagged_repo) == "allow", f"must stay unprompted: {command!r}"
+
+
+@hooked
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin main",
+        "git push origin HEAD:main",
+        "git push origin HEAD:refs/heads/master",
+        "git commit -n -m wip",
+        "git commit -an -m wip",
+        "git commit --no-verify -m wip",
+        "git -c user.name=x commit --no-verify -m wip",
+        "git push --no-verify -u origin feat/x",
+        "git config core.hooksPath /dev/null",
+        "git config --local core.hooksPath .nohooks",
+        "rm -rf ~",
+        "rm -rf /",
+        "rm -fr .",
+        "rm -r -f *",
+        "rm --recursive --force ~/",
+        "gh pr merge 5 --squash --admin",
+        'echo "$(git push origin main)"',
+    ],
+)
+def test_each_rule_still_holds_on_its_own_command(command, tagged_repo):
+    assert _decision(command, tagged_repo) == "block", f"must be refused: {command!r}"
+
+
+@hooked
+def test_a_line_that_cannot_be_parsed_falls_back_to_the_raw_rules():
+    """Over-refusing a line nobody could read is the safe direction."""
+    assert _decision('rm -rf ~ "unbalanced') == "block"
+    assert _decision('gh pr create --title "unbalanced') == "ask"
+    assert _decision('echo "unbalanced') == "allow"
+
+
+@hooked
+def test_without_its_parser_it_asks_about_gh_and_git_rather_than_passing(tmp_path):
+    lonely = tmp_path / "block_dangerous_bash.py"
+    lonely.write_text(HOOK.read_text())
+
+    def run(command: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(lonely)],
+            input=json.dumps({"tool_input": {"command": command}}),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert run("rm -rf ~").returncode == 2
+    labelled = run("gh pr create --fill --label guardrail-change")
+    assert labelled.returncode == 0 and '"ask"' in labelled.stdout

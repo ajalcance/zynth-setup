@@ -22,6 +22,14 @@ label as the owner's consent. So the second half of this hook reads `git push`, 
 The label names are not a list somebody keeps in sync by hand: tests/guards/test_agent_policy.py
 reads them out of the workflows and the release preflight and fails if this file disagrees.
 
+**Every rule reads ONE command, never the whole line.** The first rules here were regexes over
+the raw line, so words from different commands combined: `rm -rf build && copier copy . dest`
+was a recursive delete of `.`, a PR title containing "main" made `git push -u origin feat/x`
+a push to main, and a commit message that MENTIONED `--no-verify` was refused as using it. The
+line is now read as the shell reads it (`_shell.py`, shared with the confinement hook) and each
+rule looks at one simple command's own words. The raw-line regexes survive only as the
+fallback for a line the parser cannot read — there, over-refusing is the safe direction.
+
 Contract: reads the PreToolUse JSON envelope on stdin. Exit 2 blocks the tool
 call and feeds stderr back to the model; a JSON `ask` on stdout makes Claude Code prompt even
 where a static rule allows; exit 0 alone allows. Fails **open** on an internal error (a broken
@@ -34,12 +42,22 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
+from pathlib import Path
 
-# (compiled pattern, human reason). Kept deliberately narrow.
-RULES: list[tuple[re.Pattern[str], str]] = [
+# The shared parser sits beside this file. If it cannot be imported, main() falls back to the
+# raw-line rules and asks about every gh/git command — never a silent pass on those forms.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import _shell
+except Exception:  # noqa: BLE001
+    _shell = None
+
+# Raw-line rules — the FALLBACK, used only when the line cannot be parsed into commands. Read
+# over the whole line they over-refuse (words from different commands combine), which is the
+# safe direction for a line nobody could read. A parsed line is judged per command, below.
+FALLBACK_RULES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(
             r"\bgit\s+push\b(?=.*\b(?:--force|--force-with-lease|-f)\b)(?=.*\b(?:main|master)\b)"
@@ -99,12 +117,24 @@ LABEL_MUTATIONS = re.compile(
 )
 LABELS_ENDPOINT = re.compile(r"(?:^|/)labels(?:/|$|\?)")
 
-SEPARATOR_TOKENS = {";", "&", "&&", "|", "||", "(", ")", "|&", ";;"}
-REDIRECT_TOKENS = {">", ">>", "<", ">&", "&>", "<&", "<>", ">|", "&>>"}
-WRAPPERS = {"command", "builtin", "exec", "nohup", "time", "nice"}
-ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-BACKTICKS = re.compile(r"`([^`]*)`")
-HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+# Targets a recursive force-delete must never name. The confinement hook stops deletes outside
+# the project; these are the ones that take the project itself, or the machine, with them.
+DANGEROUS_ROOTS = {
+    "/",
+    "/*",
+    "~",
+    "~/",
+    "~/*",
+    "$HOME",
+    "${HOME}",
+    ".",
+    "./",
+    "./*",
+    "*",
+    "..",
+    "../",
+}
+PROTECTED_BRANCHES = {"main", "master", "refs/heads/main", "refs/heads/master"}
 
 # `git` options that come BEFORE the subcommand and take a separate value.
 GIT_GLOBAL_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
@@ -133,61 +163,6 @@ GH_API_FIELDS = {"-f", "--raw-field", "-F", "--field", "--input"}
 GIT_PUSH_WITH_VALUE = {"-o", "--push-option", "--receive-pack", "--exec", "--repo"}
 
 Verdict = tuple[str, str]  # ("block" | "ask", reason)
-
-
-def strip_heredocs(command: str) -> str:
-    """A heredoc body is data. Prose that mentions `git push --force` is not a push."""
-    lines = command.splitlines()
-    out: list[str] = []
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        out.append(line)
-        index += 1
-        match = HEREDOC_RE.search(line)
-        if not match:
-            continue
-        while index < len(lines) and lines[index].strip() != match.group(2):
-            index += 1
-        index += 1
-    return "\n".join(out)
-
-
-def simple_commands(command: str) -> list[list[str]]:
-    """Each simple command as tokens, quotes respected, wrappers and redirects removed.
-
-    Raises ValueError on a line shlex cannot read; the caller decides what that means.
-    """
-    text = strip_heredocs(command).replace("\\\n", " ").replace("\n", " ; ")
-    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    commands: list[list[str]] = [[]]
-    skip_next = False
-    for token in lexer:
-        if skip_next:
-            skip_next = False
-            continue
-        if token in SEPARATOR_TOKENS:
-            commands.append([])
-        elif token in REDIRECT_TOKENS:
-            skip_next = True
-        elif token.startswith("$") and token != "$":
-            commands[-1].append(token)
-        elif token == "$":
-            continue  # the `$` of `$(...)`; the parenthesis is a separator
-        else:
-            commands[-1].append(token)
-    out = []
-    for tokens in commands:
-        while tokens and (ENV_ASSIGNMENT_RE.match(tokens[0]) or tokens[0] in WRAPPERS):
-            tokens = tokens[1:]
-        if tokens and tokens[0] == "env":
-            tokens = tokens[1:]
-            while tokens and (tokens[0].startswith("-") or ENV_ASSIGNMENT_RE.match(tokens[0])):
-                tokens = tokens[1:]
-        if tokens:
-            out.append(tokens)
-    return out
 
 
 def unknowable(value: str) -> bool:
@@ -228,6 +203,15 @@ def judge_labels(labels: list[str], protected: frozenset[str], verb: str) -> Ver
 
 
 def judge_gh(tokens: list[str]) -> Verdict | None:
+    # Enforced here rather than as a permission deny rule: `--admin` can appear at any
+    # position, and permission rules are globs. A PreToolUse hook that exits 2 is evaluated
+    # BEFORE permission rules, so no allow rule can undo it.
+    if "--admin" in tokens:
+        return (
+            "block",
+            "--admin overrides branch protection and merges past the required checks. "
+            "That is the owner's decision, never the agent's — ask instead.",
+        )
     if len(tokens) < 2:
         return None
     group, arguments = tokens[1], tokens[2:]
@@ -320,13 +304,54 @@ def is_tag(name: str, cwd: str) -> bool | None:
     return {0: True, 1: False}.get(result.returncode)
 
 
+# `git commit` options whose next word is a value, so the value is never read as a flag.
+COMMIT_WITH_VALUE = {"-m", "-F", "-c", "-C", "--author", "--date", "--template", "-t", "--cleanup"}
+
+
+def commit_skips_hooks(arguments: list[str]) -> bool:
+    """`-n` (alone or in a cluster like `-an`) is --no-verify for `git commit`."""
+    skip = False
+    for token in arguments:
+        if skip:
+            skip = False
+            continue
+        if token in COMMIT_WITH_VALUE:
+            skip = True
+            continue
+        if token.startswith("-") and not token.startswith("--") and "n" in token[1:]:
+            # `-m` with its message attached (`-mfix`) is a message, not a cluster of flags.
+            if not token.startswith(("-m", "-F", "-c", "-C", "-t")):
+                return True
+    return False
+
+
+def judge_rm(tokens: list[str]) -> Verdict | None:
+    """A recursive force-delete of the machine, the home directory or the project itself."""
+    flags = "".join(t[1:] for t in tokens[1:] if t.startswith("-") and not t.startswith("--"))
+    recursive = "r" in flags.lower() or "--recursive" in tokens
+    force = "f" in flags or "--force" in tokens
+    if not (recursive and force):
+        return None
+    for target in tokens[1:]:
+        if target in DANGEROUS_ROOTS or target.rstrip("/") in {"", "~", "$HOME", "${HOME}"}:
+            return ("block", f"recursive force-delete of `{target}`, a dangerous root.")
+    return None
+
+
 def judge_git(tokens: list[str], cwd: str) -> Verdict | None:
     index = 1
     while index < len(tokens) and tokens[index].startswith("-"):
         index += 2 if tokens[index] in GIT_GLOBAL_WITH_VALUE else 1
-    if index >= len(tokens) or tokens[index] != "push":
+    if index >= len(tokens):
         return None
-    arguments = tokens[index + 1 :]
+    subcommand, rest = tokens[index], tokens[index + 1 :]
+    if subcommand == "config" and any(t.lower().startswith("core.hookspath") for t in rest):
+        return ("block", "changing core.hooksPath disables the repo's pre-commit hooks.")
+    if "--no-verify" in rest or (subcommand == "commit" and commit_skips_hooks(rest)):
+        return ("block", "--no-verify skips the pre-commit / commit-msg hooks (gitleaks, hygiene).")
+    if subcommand != "push":
+        return None
+    arguments = rest
 
     positionals: list[str] = []
     asks: list[str] = []
@@ -358,6 +383,13 @@ def judge_git(tokens: list[str], cwd: str) -> Verdict | None:
         positionals.append(token)
 
     for refspec in positionals[1:]:
+        destination = refspec.partition(":")[2] or refspec
+        if destination in PROTECTED_BRANCHES:
+            return (
+                "block",
+                f"`{refspec}` pushes straight to {destination}, past the pull-request ruleset. "
+                "Open a PR from a feature branch.",
+            )
         if refspec.startswith("+"):
             return ("block", f"`{refspec}` is a force push; it rewrites published history.")
         if unknowable(refspec):
@@ -378,55 +410,28 @@ def judge_git(tokens: list[str], cwd: str) -> Verdict | None:
     return None
 
 
-SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
-
-
-def nested_commands(tokens: list[str]) -> list[str]:
-    """Command lines hiding inside one token: `$(...)`, `sh -c "..."`, `eval ...`.
-
-    shlex keeps `"$(gh pr edit ...)"` as ONE token, so without this a label applied inside a
-    quoted substitution was never seen as a gh command at all.
-    """
-    inner: list[str] = []
-    for token in tokens:
-        start = token.find("$(")
-        while start != -1:
-            depth, index = 0, start + 1
-            while index < len(token):
-                depth += {"(": 1, ")": -1}.get(token[index], 0)
-                if depth == 0:
-                    break
-                index += 1
-            inner.append(token[start + 2 : index])
-            start = token.find("$(", start + 2)
-    program = os.path.basename(tokens[0])
-    if program in SHELLS and "-c" in tokens[1:-1]:
-        inner.append(tokens[tokens.index("-c", 1) + 1])
-    if program == "eval":
-        inner.append(" ".join(tokens[1:]))
-    return inner
-
-
-def token_verdicts(command: str, cwd: str, depth: int = 0) -> list[Verdict]:
+def token_verdicts(line: str, cwd: str, depth: int = 0) -> list[Verdict]:
+    """Verdicts for every command in the line, and in the lines hidden inside it."""
     if depth > 5:
         return [("ask", "command substitutions nested deeper than this hook reads.")]
     verdicts: list[Verdict] = []
-    # Backticks are read from the raw line: unquoted, shlex splits their body across tokens.
-    # A single-quoted backtick is literal and is still read — a false positive on prose that
-    # quotes an owner-label command, which the remedy (a heredoc) avoids.
-    for inner in BACKTICKS.findall(strip_heredocs(command)):
-        verdicts.extend(token_verdicts(inner, cwd, depth + 1))
-    for tokens in simple_commands(command):
-        program = os.path.basename(tokens[0])
+    parsed = _shell.commands(line)  # ValueError propagates: main() decides what that means
+    for command in parsed:
+        words = command.words
+        if not words:
+            continue
+        program = os.path.basename(words[0])
         verdict = None
         if program == "gh":
-            verdict = judge_gh(tokens)
+            verdict = judge_gh(words)
         elif program == "git":
-            verdict = judge_git(tokens, cwd)
+            verdict = judge_git(words, cwd)
+        elif program == "rm":
+            verdict = judge_rm(words)
         if verdict:
             verdicts.append(verdict)
-        for inner in nested_commands(tokens):
-            verdicts.extend(token_verdicts(inner, cwd, depth + 1))
+    for inner in _shell.nested(line, parsed):
+        verdicts.extend(token_verdicts(inner, cwd, depth + 1))
     return verdicts
 
 
@@ -463,14 +468,15 @@ def main() -> int:
     if not isinstance(command, str) or not command:
         return 0
 
-    for pattern, reason in RULES:
-        if pattern.search(command):
-            return block(reason)
-
     cwd = payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     try:
+        if _shell is None:
+            raise ImportError("_shell.py could not be imported")
         verdicts = token_verdicts(command, cwd)
     except Exception:  # noqa: BLE001 — the direction below is the decision, not an accident
+        for pattern, reason in FALLBACK_RULES:
+            if pattern.search(command):
+                return block(reason)
         if re.search(r"\b(?:gh|git)\b", command):
             return ask(
                 "this gh/git command could not be read token by token (unbalanced quotes?). "

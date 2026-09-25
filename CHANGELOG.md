@@ -9,6 +9,25 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### The agent's Bash hooks read a command line as the shell does
+
+- **Far fewer false refusals.** The confinement hook split on `|` and `;` before it read
+  quotes, so `grep -n "a\|b" f`, `git log --format='%h|%s'` and `"$(x | y)"` were refused as
+  "unbalanced quotes". The dangerous-command hook matched its rules across the whole line, so
+  `rm -rf build && cp x .` was a delete of `.`, a PR title containing "main" made a feature
+  push a push to main, and a commit message that mentioned `--no-verify` was refused as using
+  it. Both now share one quote-aware parser (`.claude/hooks/_shell.py`) and judge one command
+  at a time.
+- **Changes they used to miss are now caught:** a destructive command inside `$(...)`,
+  backticks, `bash -c` or `eval`; one behind `nice`/`nohup`/`time`/`env`; `git commit -n` and
+  `-an` (short for `--no-verify`, which the old rule only matched in an impossible position);
+  `rm --recursive --force` spelled long; and a push to `main` given as `HEAD:main`.
+- **A `cd` moves only the commands after it.** Every command used to be judged against the
+  line's LAST `cd`, so `rm -rf build && cd /tmp` was refused and a command before a `cd` was
+  judged in the wrong place.
+- Unchanged in direction: the confinement hook still refuses a line it cannot parse, and the
+  dangerous-command hook still falls back to its raw-line rules — and asks about gh/git.
+
 ### Dependabot no longer approves its own guard changes
 
 - Your `.github/dependabot.yml` labelled scanner bumps `guardrail-change` — the owner's consent
