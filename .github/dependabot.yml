@@ -1,0 +1,41 @@
+# Dependabot for the TEMPLATE repository — its own pins, not the ones it ships
+# (template/.github/dependabot.yml is what adopters get).
+#
+# Everything this repository runs is pinned: actions by commit SHA, the self-test's tools in
+# requirements-selftest.txt, the hooks by SHA in .pre-commit-config.yaml. A pin nothing
+# updates rots into an unpatched dependency, so each has an ecosystem here. The same 7-day
+# cooldown the template enforces: a version public for an hour has not been looked at yet.
+#
+# Changes to the self-test tools and hooks judge every change to this repository, so their
+# bumps carry the guardrail-change label, as the template's scanner bumps do.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci", "guardrail-change"]
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci", "guardrail-change"]
+
+  - package-ecosystem: pre-commit
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci", "guardrail-change"]

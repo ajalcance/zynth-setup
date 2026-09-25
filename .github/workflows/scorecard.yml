@@ -1,0 +1,76 @@
+# ==============================================================================
+# OSSF Scorecard — supply-chain & repo-posture monitor
+# ==============================================================================
+# The template ships this monitor to every adopter; this repository runs it on itself.
+# Watches that the guardrails themselves don't erode over many AI-assisted PRs
+# (branch protection, pinned actions, token permissions, dangerous workflows).
+# Runs weekly + when a branch-protection rule changes. A
+# regression turns THIS workflow red (a visible signal); it is not a per-PR gate.
+#
+# On a PRIVATE repo Scorecard cannot run at all without a token: its GraphQL queries
+# are not permitted to the default GITHUB_TOKEN, so it aborts before writing results.
+# Set the repo secret SCORECARD_TOKEN — a *classic* PAT with `repo` scope; a
+# fine-grained PAT is NOT sufficient. Without it this workflow stays green and warns
+# that monitoring is inactive. On a public repo no PAT is needed. See ONBOARDING.md.
+# GHAS is NOT required (results are uploaded as an artifact, not to the Security tab).
+# ==============================================================================
+
+name: Scorecard
+
+# COST: this ran on every push to the default branch, billing a full job-minute each time to
+# re-measure a posture that changes rarely. The weekly schedule is the designed cadence, and
+# `branch_protection_rule` still fires immediately on the drift that matters most.
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: "27 6 * * 1" # Mondays 06:27 UTC
+
+permissions: read-all
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      # Documented as required by ossf/scorecard-action to query commits and detect SAST
+      # tooling. Their absence is the documented cause of "Resource not accessible by
+      # integration" — the tool then aborts before writing results.json.
+      issues: read
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      # Degrade at THIS layer, not just in the gate. On a private repo Scorecard's GraphQL
+      # ListCommits query is not permitted to the default GITHUB_TOKEN, so the tool aborts and
+      # writes no results.json at all — the gate's own skip logic never gets to run. Without
+      # continue-on-error a brand-new private repo has a permanently red workflow, which trains
+      # the adopter to ignore failing workflows. The gate below still fails on a real regression.
+      - name: Run Scorecard
+        continue-on-error: true
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
+        with:
+          results_file: results.json
+          results_format: json
+          repo_token: ${{ secrets.SCORECARD_TOKEN || github.token }}
+          publish_results: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Gate on curated checks
+        run: python3 template/scripts/scorecard_gate.py results.json --min 7
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: scorecard-results
+          path: results.json
+          retention-days: 14

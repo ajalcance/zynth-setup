@@ -5,7 +5,8 @@
 # job in .github/workflows/template-test.yml) and a maintainer runs `make check` locally.
 # Generated projects are proved separately, by the self-test's `generate` matrix.
 #
-#   make check    lint + policy + test (run before every push)
+#   make check    hooks + lint + policy + test (run before every push)
+#   make hooks    the pre-commit hooks over every file (hooks-install: run them on commit)
 #   make lint     ruff + black on the root harness; shellcheck; actionlint + zizmor on workflows
 #   make policy   secret scan with canary, unicode hazards, pins, ignore rules, Jinja, owner tier
 #   make test     fault tests for the root guards and the repository's own invariants
@@ -16,16 +17,23 @@ CI_TOOLS ?= $(HOME)/.cache/ci-tools
 # The root harness. template/ has its own gates and is proved by generating from it.
 HARNESS := scripts tests
 
-.PHONY: help check lint policy test venv
+.PHONY: help check hooks hooks-install lint policy test venv
 
 help:
-	@echo "Targets: check | lint | policy | test | venv"
+	@echo "Targets: check | hooks | hooks-install | lint | policy | test | venv"
 
-check: lint policy test
+check: hooks lint policy test
 
 venv:
 	python3 -m venv .venv
-	.venv/bin/pip install -q -c requirements-selftest.txt copier jinja2 pyyaml pytest ruff black zizmor
+	.venv/bin/pip install -q -c requirements-selftest.txt copier jinja2 pyyaml pytest ruff black zizmor pre-commit
+
+# The same hooks the template ships, at the same SHAs (.pre-commit-config.yaml).
+hooks:
+	$(PY) -m pre_commit run --all-files --show-diff-on-failure
+
+hooks-install:
+	$(PY) -m pre_commit install
 
 # The template's harness rule set, not a second one: template/ruff-harness.toml.
 lint:

@@ -109,9 +109,9 @@ def test_ci_complete_needs_every_other_job():
 
 
 def test_the_repo_gate_is_the_makefile():
-    """One definition: CI runs `make check`, and `make check` is lint + policy + test."""
+    """One definition: CI runs `make check`, and `make check` is every gate the root has."""
     makefile = (ROOT / "Makefile").read_text()
-    assert re.search(r"^check:\s*lint policy test\s*$", makefile, re.MULTILINE)
+    assert re.search(r"^check:\s*hooks lint policy test\s*$", makefile, re.MULTILINE)
     runs = " ".join(step.get("run", "") for _, step in steps())
     assert "make check" in runs, "no workflow runs the repository's own gate"
 
@@ -150,3 +150,20 @@ def test_every_ignored_finding_carries_its_reason():
     for entry in entries():
         short = entry[:7]
         assert f"# {short}:" in text, f"{entry}: no '# {short}: <why this is not a secret>' line"
+
+
+# --- Dependabot ----------------------------------------------------------------------------
+
+
+def test_every_kind_of_pin_this_repository_holds_is_updated():
+    """A pin nothing updates rots. Actions, the self-test tools and the hooks are all pinned."""
+    config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
+    covered = {(u["package-ecosystem"], u["directory"]) for u in config["updates"]}
+    for needed in (("github-actions", "/"), ("pip", "/"), ("pre-commit", "/")):
+        assert needed in covered, f"{needed[0]} pins at {needed[1]} are never updated"
+    short = [
+        u["package-ecosystem"]
+        for u in config["updates"]
+        if (u.get("cooldown") or {}).get("default-days", 0) < 7
+    ]
+    assert not short, f"a version public for under a week has not been looked at yet: {short}"

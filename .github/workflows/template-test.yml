@@ -339,7 +339,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install the pinned tools
-        run: pip install -q -c requirements-selftest.txt copier jinja2 pyyaml pytest ruff black zizmor
+        run: pip install -q -c requirements-selftest.txt copier jinja2 pyyaml pytest ruff black zizmor pre-commit
 
       - name: Lint, policy and fault tests (make check)
         env:

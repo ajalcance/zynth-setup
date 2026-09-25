@@ -44,8 +44,9 @@ toggles once their payloads exist.
 **Before pushing, run the repository's own gate:**
 
 ```bash
-make venv    # once: a root .venv with the pinned tools (requirements-selftest.txt)
-make check   # lint + policy + test — the same target CI's `repo` job runs
+make venv            # once: a root .venv with the pinned tools (requirements-selftest.txt)
+make hooks-install   # once: the same pre-commit hooks the template ships, run on every commit
+make check           # hooks + lint + policy + test — the same target CI's `repo` job runs
 ```
 
 `make check` is what this repository asks of itself, held to the rules it ships: ruff and black
