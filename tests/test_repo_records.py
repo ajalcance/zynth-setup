@@ -47,10 +47,35 @@ def test_the_docs_cite_something():
     ), "the path pattern matches almost nothing — this would be vacuous"
 
 
+# Files the docs discuss that exist only on a maintainer's machine, never in the repository.
+MACHINE_LOCAL = {".claude/settings.local.json"}
+
+
+def tracked() -> set[str]:
+    """Every tracked file and every directory above one.
+
+    Resolved against git, never the working tree: a file that exists only on the machine that
+    ran the test (an ignored local settings file) passed here and failed in CI.
+    """
+    files = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split("\n")
+    paths = set()
+    for name in filter(None, files):
+        parts = name.split("/")
+        paths.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+    return paths
+
+
+TRACKED = tracked()
+
+
 def resolves(path: str) -> bool:
-    """At the root, or — for a doc describing what adopters get — as the template's source."""
+    """Tracked at the root, or — for a doc describing what adopters get — as the template's."""
+    if path in MACHINE_LOCAL:
+        return True
     candidates = (path, f"{path}.jinja", f"template/{path}", f"template/{path}.jinja")
-    return any((ROOT / c).exists() for c in candidates)
+    return any(c in TRACKED for c in candidates)
 
 
 @pytest.mark.parametrize("doc,path", cited_paths())

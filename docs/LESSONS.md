@@ -27,5 +27,8 @@ adopters live in `template/docs/LESSONS.md`.
   change here; the daily scheduled self-test is load-bearing.
 - **Job count is the CI cost driver**, not duration — GitHub bills each job rounded up to a
   minute. Batch short checks; keep label re-runs off the generation matrix.
+- **A test that reads the working tree passes on the machine that wrote it.** The cited-paths
+  check resolved against the disk, where an ignored local settings file existed; CI's clean
+  checkout failed it. Resolve against `git ls-files`. Green locally is one environment.
 - **A surviving mutant is a missing test.** Two tests once named a bug and did not exercise
   it. (CLAUDE.md 4.)
