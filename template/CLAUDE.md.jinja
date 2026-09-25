@@ -145,10 +145,17 @@ uvicorn {{ python_package }}.main:app --reload
 - Any security-relevant change → note it in [`docs/SECURITY.md`](docs/SECURITY.md) and tag the
   commit `security:`.
 {% if include_claude_hooks %}- **Local Claude Code hooks** (`.claude/settings.json`) auto-format backend Python, block
-  footguns (direct push to `main`, `--no-verify`, dangerous `rm -rf`) and secret writes, and
-  confine every *change* to this project. Reading elsewhere is fine; changing anything outside
-  is not. These are *ergonomics* that shift the guards left — **CI and the branch ruleset are
-  the real, fail-closed enforcement.**
+  footguns (direct push to `main`, a force push in any position, `--no-verify`, dangerous
+  `rm -rf`) and secret writes, and confine every *change* to this project. Reading elsewhere is
+  fine; changing anything outside is not. These are *ergonomics* that shift the guards left —
+  **CI and the branch ruleset are the real, fail-closed enforcement** — with one exception:
+- **The owner's labels are the one thing CI cannot tell apart.** The meta-guard checks that
+  `guardrail-change` (and the other override labels) is on the PR, not who applied it, and you
+  work with the owner's own GitHub login. So the hook refuses applying one, or removing
+  `release-blocker`, in every spelling — `--label`, `--add-label`, the REST labels endpoint,
+  GraphQL, a renamed label. Ask the owner. Deleting a remote ref, publishing a tag and any
+  mutating `gh api` call ask; the agent's own settings files are denied outright, and no shell
+  command may change anything under `.claude/`. ADR-0007 has the reasoning.
 
 ### Permission precedence — read this before touching `.claude/`
 

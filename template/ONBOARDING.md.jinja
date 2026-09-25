@@ -37,19 +37,53 @@ credentials in the dev environment** — use throwaway/dev values in `.env`.
 
 {% if include_claude_hooks %}## 1c. Local agent ergonomics — Claude Code hooks
 
-`.claude/settings.json` wires three **session hooks** (they run automatically in Claude Code — no
-install step):
+`.claude/settings.json` sets the permission model (routine work runs unprompted, policy and
+release actions ask, secrets and the agent's own settings are denied) and wires five **session
+hooks** (they run automatically in Claude Code — no install step):
 
 - **Auto-format** — after the agent edits a `backend/` Python file, `ruff --fix` + `black` run on it
   (uses `backend/.venv`; skips silently if absent). Fails **open**.
-- **Footgun blocker** — a `Bash` call that pushes directly to `main`, force-pushes a protected branch,
-  uses `--no-verify`, or `rm -rf`s a dangerous root is blocked with an explanation.
+- **Footgun blocker** — a `Bash` call that pushes directly to `main`, force-pushes anything (the
+  flag can sit anywhere), uses `--no-verify` or `--admin`, or `rm -rf`s a dangerous root is
+  blocked. Applying one of your override labels (`guardrail-change` and the rest) or removing
+  `release-blocker` is blocked in every spelling. Deleting a remote ref, publishing a tag and any
+  mutating `gh api` call ask you.
+- **Confinement** — no shell command may change anything outside the project, or anything under
+  `.claude/`. Reading elsewhere is fine.
 - **Secret-write blocker** — writing a real `.env`, a `*.pem`/`*.key`, or a file containing a PRIVATE
   KEY block is blocked.
+- **Approved scope** — prompts on the core paths unless `.claude/approved-scope.json` holds an
+  active scope you approved that covers them.
 
-> **These are ergonomics, not security.** They shift the existing guards left for a tighter loop; they
-> run only in Claude Code, on your machine. **CI, the branch ruleset, and pre-commit remain the
-> fail-closed backstop** — the same rules are enforced server-side where an agent can't bypass them.
+> **These are ergonomics, not security — with one exception.** They shift the existing guards left
+> for a tighter loop and run only in Claude Code, on your machine. **CI, the branch ruleset, and
+> pre-commit remain the fail-closed backstop.** The exception is your labels: CI checks that
+> `guardrail-change` is on a PR, not who put it there, and while the agent uses your GitHub login
+> the forge cannot tell you apart. The footgun blocker is what keeps that approval yours. The
+> complete fix is a separate GitHub account for the agent — the growth trigger in `docs/PLAN.md`.
+
+**Once per machine**, ignore personal agent settings in every repository, so none can commit them
+by accident (this project's `.gitignore` already does, for this project):
+
+```bash
+mkdir -p ~/.config/git && printf '%s\n' '**/.claude/settings.local.json' >> ~/.config/git/ignore
+```
+
+**Check the policy is live — don't assume it.** A rule can be well-formed, tested, and still not
+hold (a later settings file, a bypass mode, an untrusted workspace that ignores project allow
+rules). In a fresh Claude Code session in this project, ask the agent to do each of these:
+
+| Ask it to… | Expected |
+|---|---|
+| edit a file under `backend/` | no prompt |
+| run `gh api repos/<owner>/<repo>/git/refs/tags/none -X DELETE` | a prompt (decline it) |
+| run `git push origin <some-tag> --force` | refused by the hook |
+| run `gh pr edit 1 --add-label guardrail-change` | refused by the hook |
+| run `echo '{}' > .claude/settings.local.json` | refused by the hook |
+| edit `.claude/settings.local.json` | refused by a deny rule |
+
+If a "prompt" or "refused" row runs, check the session's permission mode and whether a user or
+managed settings file overrides the project's before trusting anything else in it.
 
 To disable, delete `.claude/settings.json` (or generate with `include_claude_hooks=false`). The
 scripts live in `.claude/hooks/`.

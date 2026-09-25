@@ -7,10 +7,12 @@ run when the Claude Code policy module is enabled.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
@@ -138,6 +140,46 @@ def test_an_adr_cannot_be_written_without_a_prompt():
 def test_settings_gate_edits_to_themselves():
     """ADR-0004: an agent must not be able to quietly widen its own authority."""
     assert "Edit(./.claude/**)" in _permissions()["ask"]
+
+
+def test_the_agents_own_settings_are_denied_to_every_write_tool():
+    """SEC-065: an `ask` here is a prompt somebody approves by reflex, and it widens authority.
+
+    The rest of `.claude/` still asks — a scope or a hook is legitimately drafted by the agent
+    and approved by the owner. The two files that decide what the agent may do are not.
+    """
+    deny = _permissions()["deny"]
+    missing = [
+        f"{tool}(./.claude/{name})"
+        for name in ("settings.json", "settings.local.json")
+        for tool in WRITE_TOOLS
+        if f"{tool}(./.claude/{name})" not in deny
+    ]
+    assert not missing, f"the agent can rewrite its own permissions: {missing}"
+
+
+def test_no_allow_rule_hands_over_an_interpreter():
+    """`backend/.venv/bin/* *` allowed `python -c` and `pip install` — anything, unprompted.
+
+    Every hook here reads a command line. A command line that is itself a program sails past
+    all of them, so the venv's tools are allowed by name and the interpreter is not. This closes
+    the one-liner, not the class: `pytest` runs test code the agent wrote. ADR-0007 says so, and
+    names the fix that does close it — a separate GitHub identity for the agent.
+    """
+    allow = _permissions()["allow"]
+    wildcards = [rule for rule in allow if re.search(r"bin/\*", rule)]
+    assert not wildcards, f"a wildcard over a bin directory allows an interpreter: {wildcards}"
+    for rule in allow:
+        program = rule[len("Bash(") : -1].split(" ", 1)[0]
+        assert Path(program).name not in {
+            "python",
+            "python3",
+            "pip",
+            "pip3",
+            "node",
+            "bash",
+            "sh",
+        } or rule.startswith("Bash(python3 scripts/"), f"{rule} allows arbitrary code"
 
 
 def test_bypass_permissions_mode_is_disabled():
@@ -343,3 +385,192 @@ def test_a_malformed_payload_does_not_halt_every_write():
         timeout=30,
     )
     assert result.returncode == 0
+
+
+# --- Self-approval and flags a glob cannot see (SEC-064, SEC-065) ------------------------
+#
+# `Bash(gh pr create*)` and `Bash(gh api repos/*)` are allowed, and CI reads a label as the
+# owner's consent. So `gh pr create --label guardrail-change` approved the agent's own guard
+# change without a single prompt. Every case below ran silently before this hook read tokens.
+
+
+def _decision(command: str, cwd: Path | None = None) -> str:
+    """The real hook's verdict: 'block', 'ask' or 'allow'."""
+    payload = {"tool_input": {"command": command}}
+    if cwd is not None:
+        payload["cwd"] = str(cwd)
+    result = subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode == 2:
+        return "block"
+    if result.stdout.strip():
+        return json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"]
+    return "allow" if result.returncode == 0 else f"exit {result.returncode}"
+
+
+@pytest.fixture(scope="module")
+def tagged_repo(tmp_path_factory) -> Path:
+    """A repository holding tag v1.0.0, so a bare tag name can be told from a branch."""
+    repo = tmp_path_factory.mktemp("tagged")
+    git = ["git", "-c", "user.email=a@example.com", "-c", "user.name=a", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    subprocess.run([*git, "tag", "v1.0.0"], check=True)
+    return repo
+
+
+hooked = pytest.mark.skipif(not HOOK.is_file(), reason="hooks not enabled")
+
+
+@hooked
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr create --fill --label guardrail-change",
+        "gh pr create --fill -l guardrail-change",
+        "gh pr create --fill -lguardrail-change",
+        "gh pr create --fill --label=allow-suppressions",
+        "gh pr create --fill --label enhancement,no-tests-needed",
+        'gh pr create --fill --label "$LABEL"',
+        "gh issue create --title t --label allow-exemptions",
+        "gh pr edit 5 --add-label guardrail-change",
+        "gh issue edit 5 --add-label Sensitive-Change-Approved",
+        "gh pr edit 5 --add-label no-changelog",
+        "gh issue edit 7 --remove-label release-blocker",
+        "gh label edit old-name --name guardrail-change",
+        "gh api repos/acme/x/issues/5/labels -f labels[]=guardrail-change",
+        "gh api repos/acme/x/issues/5/labels --input body.json",
+        "gh api repos/acme/x/issues/7/labels/release-blocker -X DELETE",
+        "gh api repos/acme/x/issues/5 -X PATCH -f labels[]=enhancement",
+        "gh api repos/acme/x/issues/5 -X PATCH --field=labels[]=enhancement",
+        "gh api repos/acme/x/issues -flabels[]=guardrail-change -f title=t",
+        "gh api graphql -f query='mutation{addLabelsToLabelable(input:{}){clientMutationId}}'",
+        "git status && gh pr create --fill --label guardrail-change",
+        "GH_TOKEN=x gh pr create --fill --label guardrail-change",
+        'echo "$(gh pr edit 5 --add-label no-tests-needed)"',
+        "echo `gh pr edit 5 --add-label guardrail-change`",
+        'bash -c "gh pr edit 5 --add-label guardrail-change"',
+        "eval gh pr edit 5 --add-label guardrail-change",
+    ],
+)
+def test_the_agent_cannot_approve_its_own_change(command):
+    assert _decision(command) == "block", f"self-approval must be refused: {command!r}"
+
+
+@hooked
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin feat/x --force",
+        "git push -f origin feat/x",
+        "git push -uf origin feat/x",
+        "git push origin +v1.0.0",
+        "git push origin v1.0.0 --force-with-lease",
+        "git push --mirror origin",
+        "git -c core.x=y push --force origin feat/x",
+        'x=$(echo "$(git push origin feat/x --force)")',
+    ],
+)
+def test_a_force_push_is_refused_wherever_the_flag_sits(command):
+    assert _decision(command) == "block", f"a force push must be refused: {command!r}"
+
+
+@hooked
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin --delete v1.0.0",
+        "git push -d origin feat/x",
+        "git push origin :refs/tags/v1.0.0",
+        "git push origin :feat/x",
+        "git push origin --tags",
+        "git push --follow-tags origin feat/x",
+        "git push origin refs/tags/v1.0.0",
+        "git push origin v1.0.0",
+        "git push --prune origin",
+        "gh api repos/acme/x/git/refs/tags/v1.0.0 -X DELETE",
+        "gh api -XDELETE repos/acme/x/git/refs/tags/v1.0.0",
+        "gh api repos/acme/x/git/refs/heads/main --method PATCH -f sha=abc",
+        "gh api repos/acme/x/rulesets -f name=x",
+        "gh api repos/acme/x/rulesets -fname=x",
+        "gh api repos/acme/x/issues/5 -X PATCH -f state=closed",
+        "gh api repos/acme/x/actions/secrets/X --input s.json",
+        "gh api graphql -f query='{viewer{login}}'",
+        "gh label create allow-exemptions",
+        'gh pr create --fill --title "unbalanced',
+    ],
+)
+def test_what_has_a_legitimate_form_asks(command, tagged_repo):
+    assert _decision(command, tagged_repo) == "ask", f"the owner must be asked: {command!r}"
+
+
+@hooked
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr create --fill",
+        "gh pr create --fill --label enhancement",
+        "gh pr list --label guardrail-change",
+        "gh pr view 5 --json labels",
+        "gh issue edit 5 --add-label release-blocker",
+        "gh api repos/acme/x/pulls/5",
+        "gh api repos/acme/x/issues/5/labels",
+        "gh api repos/acme/x/pulls -X GET -f state=open",
+        "git push -u origin feat/x",
+        "git push origin feat/x 2>&1",
+        "git push",
+        'echo "$(git rev-parse HEAD)"',
+        'git commit -m "docs: never git push --force or gh pr edit --add-label guardrail-change"',
+        "cat <<'EOF' > notes.md\ngit push -f origin feat/x\n"
+        "gh pr edit 1 --add-label no-tests-needed\nEOF",
+    ],
+)
+def test_routine_github_work_stays_silent(command, tagged_repo):
+    """The positive control: a hook that asks about everything trains the reflex it must beat."""
+    assert _decision(command, tagged_repo) == "allow", f"must stay unprompted: {command!r}"
+
+
+def _hook_constants() -> dict:
+    spec = importlib.util.spec_from_file_location("block_dangerous_bash", HOOK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return {"consent": set(module.CONSENT_LABELS), "hold": set(module.HOLD_LABELS)}
+
+
+@hooked
+def test_the_consent_labels_are_every_label_a_workflow_reads():
+    """Reconciled against the population, not typed out twice.
+
+    A label a workflow reads and this hook does not know is a self-approval nobody sees.
+    """
+    read = set()
+    for workflow in (REPO_ROOT / ".github" / "workflows").glob("*.yml"):
+        read |= set(re.findall(r"labels\.\*\.name,\s*'([^']+)'", workflow.read_text()))
+    assert read, "no workflow reads a label — this reconciliation would be vacuous"
+    assert _hook_constants()["consent"] == read, (
+        "the hook's CONSENT_LABELS and the labels the workflows read have drifted: "
+        f"{sorted(_hook_constants()['consent'] ^ read)}"
+    )
+
+
+@hooked
+def test_the_hold_labels_are_the_release_preflights():
+    preflight = (REPO_ROOT / "scripts" / "release_preflight.py").read_text()
+    held = set(re.findall(r'^BLOCKER_LABEL = "([^"]+)"', preflight, re.MULTILINE))
+    assert held, "release_preflight.py no longer names its hold label"
+    assert _hook_constants()["hold"] == held
+
+
+@hooked
+def test_every_owner_label_is_provisioned():
+    """GitHub only applies a label that exists: an unprovisioned one is consent nobody can give."""
+    bootstrap = (REPO_ROOT / "scripts" / "bootstrap-repo.sh").read_text()
+    provisioned = set(re.findall(r'^\s*"([a-z-]+)\|', bootstrap, re.MULTILINE))
+    constants = _hook_constants()
+    missing = (constants["consent"] | constants["hold"]) - provisioned
+    assert not missing, f"read by a workflow but never created by bootstrap-repo.sh: {missing}"

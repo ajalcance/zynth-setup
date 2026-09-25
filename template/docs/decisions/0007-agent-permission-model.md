@@ -91,7 +91,62 @@ the dangerous — file utilities, the venv's own tools, `npx`. Clicking through 
 reflexive approval and destroys the signal on the prompts that matter. The rule now: allow what
 the gates govern, ask for the core, and deny the never-acceptable so it needs no click either.
 
-## Consequences
+## Amendment (2026-09-25): the flag can sit anywhere, and a label is consent
+
+Found by holding this policy against a portable write-up of the same model from another
+project, then probing a fresh generation: 43 of 70 commands did something other than what this
+ADR says they do. Four holes, one shape — **an allow rule is a prefix glob, and the part of a
+command that matters can come after the prefix.**
+
+- **The agent could approve its own guard change.** `Bash(gh pr create*)` and
+  `Bash(gh api repos/*)` are allowed, and the meta-guard reads `guardrail-change` as the owner's
+  consent. `gh pr create --label guardrail-change` ran without a prompt; so did a POST to the
+  labels endpoint. CI checks that the label is present, never who applied it — and while the
+  agent works with the owner's own GitHub login, the forge cannot tell them apart.
+- **Published history could be rewritten.** The deny rule is `git push --force*`, so
+  `git push origin v1.0.0 --force` matched the allowed `git push*` instead and re-pointed a
+  published tag. `-f`, `+refspec`, `--delete` and `:ref` were silent the same way.
+- **Any repository mutation through `gh api`.** The ask rule was `gh api -X *`, so
+  `gh api repos/o/r/git/refs/tags/v1 -X DELETE` — method after the endpoint — was allowed, and
+  `-f` implies POST without naming a method at all.
+- **The agent could rewrite its own permissions.** `Edit(./.claude/**)` asked, but
+  `echo '{...}' > .claude/settings.local.json` is an allowed `echo` with a redirect, not an Edit.
+  And `backend/.venv/bin/* *` allowed `python -c` and `pip install` outright.
+
+**Decision.** `block_dangerous_bash.py` reads every `gh` and `git push` command token by token,
+including inside `$(...)`, backticks, `sh -c` and `eval`:
+
+- applying a label a workflow reads as consent, or removing the release hold, is **refused** in
+  every spelling — flag, REST endpoint, GraphQL mutation, renamed label, or a name the hook
+  cannot read (`$LABEL`). The label names are read out of the workflows and the release
+  preflight by a test, not maintained by hand. Name-scoped on purpose: `--label enhancement`
+  stays silent, because a hook that refuses everything teaches the owner to switch it off;
+- a force push, in any position and any spelling, is **refused** — it was always meant to be;
+  the deny rule simply could not see past the prefix;
+- deleting a remote ref, publishing a tag (named, `--tags`, or `refs/tags/`) and any mutating
+  `gh api` call **ask**. Each has a legitimate form, so the owner decides. The hook returns
+  `ask` and Claude Code prompts even where a static rule allows — the mirror image of the v3
+  lesson, where a hook's `allow` lost to a static `ask`.
+
+`.claude/settings.json` and `.claude/settings.local.json` are **denied** to every write tool
+rather than asked about, and `confine_to_project.py` refuses any shell command that changes
+anything under `.claude/`, including `git checkout <old-ref> -- .claude/settings.json`, which
+restores a weaker policy without writing a byte. The venv's tools are allowed by name; the
+interpreter is not.
+
+**Not adopted from that write-up, and why.** A blanket `Bash`/`Edit` allow with a short ask list
+is looser than this model and is what let those commands through there. A pre-push hook keyed
+on an environment variable adds a ceremony the server never sees; once the agent cannot apply
+the label, the label *is* the human act. Closing and reopening a PR so CI sees a new label is
+unnecessary here: `ci.yml` already runs on `labeled`.
+
+**The honest limit.** This is a local control over a single-identity setup. An agent that writes
+a test and runs it under the allowed `pytest`, or a script under `npm run`, executes code no
+command-line hook reads, with the owner's token. The only complete fix is the one the growth
+trigger in `docs/PLAN.md` names: a separate GitHub account for the agent, after which the
+meta-guard can check *who* applied the label, not only that it is there. Until then the claim
+is exactly this: the agent cannot approve its own change by any command it types.
+
 
 - Routine work stops prompting, so a prompt becomes informative again — it means *authority*.
 - This policy governs **Claude Code only**. Other agents and tools keep their own host-enforced

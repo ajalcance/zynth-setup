@@ -19,6 +19,13 @@ Three design decisions worth keeping:
   `/dev/stderr`) are exempt, or this hook blocks its own mutation check.
 * **Prefer a false positive on a convoluted one-liner to a false negative.** This refuses to
   guess what a variable expands to. The remedy is a simpler command, never a weaker hook.
+* **The agent's own policy is outside the project too, as far as the shell is concerned.**
+  `.claude/` is gated for the file tools — the settings files are denied, the rest asks — and
+  `echo '{...}' > .claude/settings.local.json` walked straight past both, because `echo` is
+  allowed and a redirect is not an Edit. So no shell command may change anything under
+  `.claude/`, including `git checkout <old-ref> -- .claude/settings.json`, which restores a
+  weaker policy without writing a byte of it. A change there goes through the Edit tool,
+  where the permission system can see it.
 
 Contract: reads the PreToolUse JSON envelope on stdin. Exit 2 blocks and feeds stderr back to
 the model; exit 0 allows. Fails **closed** on a command it cannot parse — unlike its siblings,
@@ -113,6 +120,32 @@ def inside(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
 
+# `git` subcommands that overwrite working-tree files from another ref.
+GIT_OVERWRITES = {"checkout", "restore"}
+GIT_GLOBAL_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace"}
+
+
+def git_overwrite_targets(tokens: list[str]) -> list[str]:
+    """Paths a `git checkout`/`git restore` may overwrite. Judged against `.claude/` only.
+
+    A branch name or an option's value read as a path is harmless here — it would have to
+    resolve inside `.claude/` to matter, and git refuses a ref name with a component starting
+    with a dot — so every non-option token is a candidate. Not used for the escape check:
+    `git -C` moves git's directory without a `cd`, and judging these as escapes would be
+    guessing.
+    """
+    while tokens and ENV_ASSIGNMENT_RE.match(tokens[0]):
+        tokens = tokens[1:]
+    if not tokens or Path(tokens[0]).name != "git":
+        return []
+    index = 1
+    while index < len(tokens) and tokens[index].startswith("-"):
+        index += 2 if tokens[index] in GIT_GLOBAL_WITH_VALUE else 1
+    if index >= len(tokens) or tokens[index] not in GIT_OVERWRITES:
+        return []
+    return [token for token in tokens[index + 1 :] if not token.startswith("-")]
+
+
 def write_targets(segment: str) -> tuple[list[str], list[str]]:
     """(paths this segment writes, reasons it cannot be judged)."""
     targets: list[str] = []
@@ -177,7 +210,9 @@ def decide(command: str, root: Path) -> str | None:
     segments = [s for s in SEPARATORS.split(strip_heredocs(command)) if s.strip()]
     cwd, problems = effective_cwd(segments, root)
 
+    policy = root / ".claude"
     escaping: list[str] = []
+    into_policy: list[str] = []
     for segment in segments:
         targets, unresolvable = write_targets(segment)
         problems.extend(unresolvable)
@@ -188,7 +223,20 @@ def decide(command: str, root: Path) -> str | None:
             resolved = resolve(target, cwd)
             if not inside(resolved, root):
                 escaping.append(f"{target} → {resolved}")
+            elif inside(resolved, policy):
+                into_policy.append(target)
+        for target in git_overwrite_targets(split_tokens(segment) or []):
+            if inside(resolve(target, cwd), policy):
+                into_policy.append(target)
 
+    if into_policy:
+        return (
+            "this command changes the agent's own policy from the shell:\n  "
+            + "\n  ".join(dict.fromkeys(into_policy))
+            + "\nNothing under .claude/ may be changed by a shell command. Its settings files are "
+            "the owner's to edit by hand; for anything else there, use the Edit tool, where the "
+            "permission system can see the change and ask."
+        )
     if escaping:
         return (
             "this command changes something outside the project:\n  "

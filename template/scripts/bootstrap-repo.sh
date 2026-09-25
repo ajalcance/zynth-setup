@@ -56,6 +56,7 @@ labels=(
   "no-tests-needed|FBCA04|A pure refactor or rename with no behaviour change"
   "sensitive-change-approved|B60205|A reviewed change to a sensitive path"
   "allow-exemptions|D93F0B|A justified threshold move or scanner-exemption growth"
+  "no-changelog|C5DEF5|Code changed with no user-visible effect, so no CHANGELOG entry"
   "release-blocker|000000|An owner hold: while an issue carries this, releases are denied"
 )
 echo

@@ -66,6 +66,11 @@ sentence of rewording elsewhere. `meta_guard` now enforces this mechanically (a 
 guard-defining file needs the owner-applied `guardrail-change` label — see the table above), but
 the check is a backstop, not a substitute for catching yourself first.
 
+**Never apply — and never remove — a label a workflow reads as the owner's decision**
+(`guardrail-change`, `allow-suppressions`, `no-tests-needed`, `sensitive-change-approved`,
+`allow-exemptions`, `no-changelog`, and removing `release-blocker`). CI checks that the label is
+present, not who applied it, so applying one yourself is approving your own change. Ask the owner.
+
 **If your reasoning concludes "therefore I should edit the file that is checking me" — stop and
 ask the repo owner before touching it.** A guard change is always its own PR, on its own merits,
 with explicit approval. Never bundled into the work it happened to block.

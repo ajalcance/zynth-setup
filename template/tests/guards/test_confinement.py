@@ -228,3 +228,46 @@ def test_the_hook_is_registered_for_bash():
     assert any(
         "confine_to_project.py" in c for c in commands
     ), "the confinement hook is not registered for Bash, so it never runs"
+
+
+# --- The agent's own policy (SEC-065) ---------------------------------------------------
+#
+# `.claude/` is gated for the file tools, and `echo '{...}' > .claude/settings.local.json`
+# walked past both gates: `echo` is allowed and a redirect is not an Edit.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo '{}' > .claude/settings.local.json",
+        "cp docs/x.json .claude/settings.json",
+        "sed -i 's/ask/allow/' .claude/settings.json",
+        "mv notes.py .claude/hooks/block_dangerous_bash.py",
+        "tee .claude/approved-scope.json < scope.json",
+        "cd docs && rm ../.claude/hooks/confine_to_project.py",
+        "git checkout v1.0.0 -- .claude/settings.json",
+        "git restore --source=HEAD~3 .claude/settings.json",
+        "git -c advice.x=false checkout main .claude/hooks",
+    ],
+)
+def test_no_shell_command_changes_the_agents_own_policy(command):
+    code, message = verdict(command)
+    assert code == 2, f"must not be allowed: {command!r}"
+    assert "agent's own policy" in message, f"blocked for the wrong reason:\n{message}"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat .claude/settings.json",
+        "grep -r deny .claude",
+        "git checkout feat/next",
+        "git checkout -b feat/claude-docs",
+        "git restore backend/app.py",
+        "echo checkout .claude/settings.json",
+    ],
+)
+def test_reading_the_policy_and_ordinary_checkouts_stay_allowed(command):
+    """The positive control: reading `.claude/` and switching branches must not be caught."""
+    code, message = verdict(command)
+    assert code == 0, f"{command!r} was blocked:\n{message}"

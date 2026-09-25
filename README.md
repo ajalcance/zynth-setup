@@ -69,7 +69,7 @@ add a module later with `copier update`. Each one is independent.
 | **docs site** | A published documentation website (`docs-site/`) | you want human-friendly docs hosted for others | a second Next.js app to keep building |
 | **deploy** | Docker Compose + Caddy stack, and **signed-image** production deploys (cosign) | you're ready to run this on a real server | a deploy target host + the signing/verify flow |
 | **compliance spine** | Tamper-evident audit log + coverage-guards proving every action is recorded, monitored, audited | you must *prove* what the system did (audits, regulated data) | writing each new action to satisfy 4 coverage guards |
-| **Claude hooks** *(on by default)* | Local Claude Code convenience hooks: auto-format + block footguns/secret writes | you use Claude Code and want faster feedback | nothing — pure local ergonomics; CI is unchanged |
+| **Claude hooks** *(on by default)* | The Claude Code agent policy: permission model, auto-format, and hooks that block footguns, secret writes, changes outside the project, and the agent applying your override labels | you use Claude Code | faster feedback — and the one thing CI cannot do: CI checks that `guardrail-change` is on a PR, not who applied it, so without these hooks an agent using your GitHub login can approve its own guard change |
 
 Not sure? Start minimal (all off except Claude hooks). The base framework — AI contract, docs
 system, CI/security gates, backend skeleton — is always included. Every generated project also
