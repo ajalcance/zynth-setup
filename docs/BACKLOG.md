@@ -21,6 +21,8 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T11 | `block_dangerous_bash.py`'s older regex rules scan the WHOLE command line: `git push -u origin feat/x && gh pr create --title "main takes PRs only"` is refused as a direct push to main, and `feat/main-fix` matches `\bmain\b`. They should run per simple command, like the v3.2 token pass. | The hook, live in this repo's own session |
 | T12 | `template/.github/dependabot.yml` labels the scanner bumps `guardrail-change` — the owner's consent label. A bot applying it approves its own guard change and the meta-guard passes. Flag with a label no workflow reads, and let the check stay red until the owner applies consent. | Dependabot's first PRs here arrived pre-approved |
 | T13 | The template pins `pre-commit` twice at different versions: 4.6.2 in `requirements-ci.txt`, 4.6.1 in `backend/requirements-dev.txt.jinja`. One version per tool, tested. | Writing `tests/test_shared_pins.py` |
+| T14 | **Fixed in this change:** 8 dev-only advisories in the frontend/docs-site lockfiles (js-yaml, browserslist, vitest, brace-expansion). The self-test never saw them — `npm audit --omit=dev` by design — and nothing audits dev dependencies anywhere. Consider a scheduled full audit that reports without gating. | Enabling Dependabot alerts on this repo |
+| T15 | Dependabot security updates ignore `cooldown` (GitHub's design), so a security PR can propose a release published hours earlier — #21 proposed vitest 5.0.2, published that morning. Adopters' Dependabot does the same. Document it; the owner-consent flag (T12) is what makes such a PR get read. | Dependabot PR #21 |
 
 ## Carried over
 
