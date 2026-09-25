@@ -158,12 +158,46 @@ def test_every_ignored_finding_carries_its_reason():
 def test_every_kind_of_pin_this_repository_holds_is_updated():
     """A pin nothing updates rots. Actions, the self-test tools and the hooks are all pinned."""
     config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
-    covered = {(u["package-ecosystem"], u["directory"]) for u in config["updates"]}
-    for needed in (("github-actions", "/"), ("pip", "/"), ("pre-commit", "/")):
-        assert needed in covered, f"{needed[0]} pins at {needed[1]} are never updated"
+    covered = {
+        (u["package-ecosystem"], directory)
+        for u in config["updates"]
+        for directory in u.get("directories", [u.get("directory")])
+    }
+    # The template's own pins too: Dependabot reads only this file, so a template directory
+    # missing here is a set of pins nothing ever proposes a bump for.
+    for ecosystem in ("github-actions", "pip", "pre-commit"):
+        for directory in ("/", "/template"):
+            assert (
+                ecosystem,
+                directory,
+            ) in covered, f"{ecosystem} pins at {directory} never update"
     short = [
         u["package-ecosystem"]
         for u in config["updates"]
         if (u.get("cooldown") or {}).get("default-days", 0) < 7
     ]
     assert not short, f"a version public for under a week has not been looked at yet: {short}"
+
+
+def test_no_bot_applies_a_label_a_workflow_reads_as_consent():
+    """Dependabot labelled its own guard bumps `guardrail-change` — and the guard check passed.
+
+    The label is the owner's consent; whoever applies it approves the change. A bot that applies
+    it approves its own. Flag with `needs-owner` instead, and let the check stay red.
+    """
+    consent = set()
+    for workflow in WORKFLOWS.glob("*.yml"):
+        consent |= set(re.findall(r"labels\.\*\.name,\s*'([^']+)'", workflow.read_text()))
+    assert consent, "no workflow reads a label — this would pass over nothing"
+    config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
+    applied = {label for update in config["updates"] for label in update.get("labels", [])}
+    assert not applied & consent, f"Dependabot applies consent label(s): {applied & consent}"
+
+
+def test_every_label_dependabot_applies_is_provisioned():
+    """GitHub drops a label that does not exist; the flag would silently never appear."""
+    config = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
+    applied = {label for update in config["updates"] for label in update.get("labels", [])}
+    bootstrap = (ROOT / "scripts" / "bootstrap-repo.sh").read_text()
+    provisioned = set(re.findall(r'^\s*"([a-z-]+)\|', bootstrap, re.MULTILINE))
+    assert applied <= provisioned, f"never created by bootstrap-repo.sh: {applied - provisioned}"

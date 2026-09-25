@@ -55,6 +55,7 @@ labels=(
   "guardrail-change|B60205|A deliberate, reviewed change to a guard — applied by the owner only"
   "dependencies|0366D6|A dependency update"
   "ci|5319E7|Continuous integration and tooling"
+  "needs-owner|FBCA04|A bot's change to a guard: the owner reviews, then applies guardrail-change"
 )
 for entry in "${labels[@]}"; do
   IFS='|' read -r name colour description <<<"$entry"
