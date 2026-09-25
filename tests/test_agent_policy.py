@@ -46,7 +46,8 @@ def test_every_rule_is_well_formed():
 
 
 @pytest.mark.parametrize(
-    "hook", ["block_dangerous_bash.py", "confine_to_project.py", "block_secret_write.py"]
+    "hook",
+    ["block_dangerous_bash.py", "confine_to_project.py", "block_secret_write.py", "_shell.py"],
 )
 def test_each_hook_is_the_one_the_template_ships(hook):
     """A copy, byte for byte — never a pointer into template/.
@@ -67,7 +68,16 @@ def test_every_hook_is_registered():
         hook["command"] for entry in settings["hooks"]["PreToolUse"] for hook in entry["hooks"]
     )
     for hook in HOOKS.glob("*.py"):
+        # `_shell.py` is the parser the Bash hooks import, not a hook: nothing runs it directly.
+        if hook.name.startswith("_"):
+            continue
         assert hook.name in commands, f"{hook.name} ships but never runs"
+
+
+def test_every_module_a_hook_imports_ships_beside_it():
+    """A hook whose parser is missing refuses everything — the copy must travel with it."""
+    for module in (TEMPLATE_HOOKS).glob("_*.py"):
+        assert (HOOKS / module.name).is_file(), f".claude/hooks/{module.name} was never copied"
 
 
 def test_the_agents_own_settings_are_denied_to_every_write_tool():

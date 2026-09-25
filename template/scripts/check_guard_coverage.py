@@ -49,6 +49,10 @@ NON_GATES: dict[str, str] = {
     "preflight.py": "a diagnostic that tells you what to install; it gates no change",
     "bootstrap-repo.sh": "one-time repository setup, run by a human against GitHub",
     "check_guard_coverage.py": "this file — it is the coverage check, not a guard over code",
+    "_shell.py": (
+        "the parser the Bash hooks import — it decides nothing itself, and every behaviour it "
+        "has is fault-tested through the two hooks that use it"
+    ),
     "format_python.py": (
         "its own docstring says 'Ergonomics, NOT a guard' — it formats what was just written "
         "and always exits 0, so there is no failure for a fault test to provoke"
