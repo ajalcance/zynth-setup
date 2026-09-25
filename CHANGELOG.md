@@ -9,6 +9,8 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
+
 ### The agent's Bash hooks read a command line as the shell does
 
 - **Far fewer false refusals.** The confinement hook split on `|` and `;` before it read
