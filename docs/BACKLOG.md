@@ -17,6 +17,7 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T7 | `confine_to_project.py` splits on `\|`/`;` before parsing quotes: `grep "a\|b" f`, `"$(x \| y)"` and `--format='a\|b'` are refused as unbalanced quotes — false positives on everyday reads. | The hook, live in this repo's own session |
 | T8 | The meta-guard's `GUARD_FILE_RE` does not name `.claude/` (the agent's own policy and hooks), `tests/guards/` or the `Makefile`: an agent can weaken any of them with no owner label. | Writing `scripts/check_guard_label.py` |
 | T9 | The confinement hook blocks writes to the agent's session scratch directory, which Claude Code provides outside the project. Consider honouring `permissions.additionalDirectories`. | This repo's session |
+| T10 | The shipped ruleset's `pull_request` rule sets `require_extra_approval_for_unattributed_changes`, which GitHub's REST reference does not document: either the bootstrap is refused or the setting is silently ignored. Verify against the live API; keep only documented parameters, with a test. | Writing this repo's ruleset |
 
 ## Carried over
 
