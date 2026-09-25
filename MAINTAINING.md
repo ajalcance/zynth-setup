@@ -152,6 +152,27 @@ Tag template releases so projects can pin/update to a known version.
 
 ## Releasing
 
-Tag from `main` only. `v3.0.0` is a MAJOR bump: `deploy/verify.sh` takes `--tag` instead of a
-list of images and requires the signed evidence beside it, the conditional client-events ADR
-moved from 0011 to 0012, and `make check` now includes `policy` and `harness`.
+The policy is ADR [0003](docs/decisions/0003-releases-and-versioning.md); this is the procedure.
+
+1. **Pick the version.** Three components, above the latest tag (`git tag --sort=-version:refname
+   | head -1`). Copier serves adopters the highest tag, so anything that sorts lower is a release
+   nobody receives. Major when an update needs action beyond `copier update`; minor when an
+   adopter will notice behaviour change; patch otherwise.
+2. **Merge to `main` through a pull request** and wait for the push self-test on that exact
+   commit to go green — including the image builds and the copier-update gate, which run on
+   push only.
+3. **Move `[Unreleased]` in `CHANGELOG.md` under the new version** (its own small PR).
+4. **Tag the green commit**, annotated, naming the run:
+
+   ```bash
+   git tag -a vX.Y.Z <sha> -m "vX.Y.Z — <one line>" -m "<notes>. Self-test green on this commit (run <id>)."
+   git push origin vX.Y.Z
+   ```
+
+5. **Publish the GitHub Release** from the tag, with the CHANGELOG entry as the body.
+6. **Confirm adopters receive it**: generate from `https://github.com/ajalcance/zynth-setup.git`
+   with no `--vcs-ref`; `.copier-answers.yml` must record `_commit: vX.Y.Z`.
+7. **Re-check the self-test on `main`** — its copier-update gate now starts from the new tag.
+
+A published tag is never re-pointed or deleted; the tag ruleset refuses it. A bad release is
+superseded by the next one.

@@ -1,0 +1,107 @@
+"""The repository's records stay true: cited paths exist, releases are recorded, ADRs contiguous.
+
+MAINTAINING.md's release section described only v3.0.0 through three later releases, and its
+"add a new prompt" advice contradicted the owner tier. Records nobody checks drift.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+
+import pytest
+from conftest import ROOT, SCRIPTS
+
+DOCS = [
+    ROOT / "CLAUDE.md",
+    ROOT / "AGENTS.md",
+    ROOT / "MAINTAINING.md",
+    *sorted((ROOT / "docs").rglob("*.md")),
+]
+# A repository path: a known top-level directory or a root file. Spaces only inside a Jinja
+# conditional, which is how the template's module directories are named.
+SEGMENT = r"(?:[\w./-]|\{%[^%]*%\})"
+CITED = re.compile(
+    r"(?<![\w/.-])((?:\.claude|\.github|scripts|tests|docs|template)/" + SEGMENT + r"*[\w}]"
+    r"|(?:Makefile|CLAUDE\.md|AGENTS\.md|MAINTAINING\.md|CHANGELOG\.md|copier\.yml"
+    r"|requirements-selftest\.txt|\.pre-commit-config\.yaml|\.gitleaks\.toml|\.gitleaksignore))"
+    r"(?=[`)\s,.:;]|$)"
+)
+
+
+def cited_paths() -> list[tuple[str, str]]:
+    found = []
+    for doc in DOCS:
+        for match in CITED.finditer(doc.read_text()):
+            path = match.group(1).rstrip(".")
+            if "*" in path or "<" in path or path.endswith("/"):
+                continue
+            found.append((doc.name, path))
+    return found
+
+
+def test_the_docs_cite_something():
+    assert (
+        len(cited_paths()) > 20
+    ), "the path pattern matches almost nothing — this would be vacuous"
+
+
+def resolves(path: str) -> bool:
+    """At the root, or — for a doc describing what adopters get — as the template's source."""
+    candidates = (path, f"{path}.jinja", f"template/{path}", f"template/{path}.jinja")
+    return any((ROOT / c).exists() for c in candidates)
+
+
+@pytest.mark.parametrize("doc,path", cited_paths())
+def test_every_cited_path_exists(doc, path):
+    assert resolves(path), f"{doc} cites {path}, which does not exist here or in template/"
+
+
+def test_every_release_is_in_the_changelog():
+    tags = subprocess.run(
+        ["git", "tag", "--list", "v*"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split()
+    assert tags, "no tags visible — fetch with tags, or this passes over nothing"
+    changelog = (ROOT / "CHANGELOG.md").read_text()
+    missing = [t for t in tags if f"## [{t[1:]}]" not in changelog]
+    assert not missing, f"released but never recorded in CHANGELOG.md: {missing}"
+
+
+def test_the_changelog_keeps_an_unreleased_section():
+    assert "## [Unreleased]" in (ROOT / "CHANGELOG.md").read_text()
+
+
+def test_adr_numbers_are_contiguous_from_one():
+    numbers = sorted(
+        int(p.name[:4]) for p in (ROOT / "docs" / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md")
+    )
+    assert numbers, "no ADRs found"
+    assert numbers == list(range(1, len(numbers) + 1)), f"ADR numbering has a gap: {numbers}"
+
+
+def test_verify_refuses_without_copier_rather_than_passing():
+    result = subprocess.run(
+        ["bash", str(SCRIPTS / "verify-generations.sh"), "minimal"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "COPIER": "/nonexistent/copier"},
+    )
+    assert result.returncode == 2 and "REFUSED" in result.stderr
+
+
+def test_verify_refuses_an_unknown_variant(tmp_path):
+    fake = tmp_path / "copier"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    result = subprocess.run(
+        ["bash", str(SCRIPTS / "verify-generations.sh"), "no-such-variant"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "COPIER": str(fake)},
+    )
+    assert result.returncode == 2 and "unknown variant" in result.stderr

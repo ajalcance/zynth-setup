@@ -1,0 +1,12 @@
+# Review routing for the template repository. Advisory while the repository has one maintainer
+# (GitHub forbids approving your own pull request); what is enforced is the guard-label check
+# and `ci-complete`, required by the ruleset. Listed so a second maintainer inherits the map.
+*                              @ajalcance
+/.claude/                      @ajalcance
+/.github/                      @ajalcance
+/scripts/                      @ajalcance
+/tests/                        @ajalcance
+/template/scripts/             @ajalcance
+/template/.claude/             @ajalcance
+/template/.github/             @ajalcance
+/template/tests/guards/        @ajalcance
