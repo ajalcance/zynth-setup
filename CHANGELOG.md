@@ -15,7 +15,8 @@ version must sort above the one before it.
   runs locally and in CI; a `ci-complete` aggregate check; pinned self-test tools; the secret
   scan with canary over this repository's history; pre-commit hooks, Dependabot and Scorecard;
   a committed agent policy with the template's hooks; a guard-label check; `make verify` for
-  generating and gating every variant; CLAUDE.md, ADRs, lessons and a template backlog.
+  generating and gating every variant; CLAUDE.md, ADRs, lessons and a template backlog;
+  rulesets for `main` and release tags, applied by `scripts/bootstrap-repo.sh`.
 - `scripts/check-jinja-syntax.sh` refused nothing without jinja2 installed (it printed SKIPPED
   and passed) and never parsed directory names, where the module toggles live. Both fixed.
 

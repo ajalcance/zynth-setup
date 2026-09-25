@@ -150,6 +150,15 @@ Tag template releases so projects can pin/update to a known version.
   Three habits it is all in service of, and the ones to preserve when changing any of it:
   **the denominator rule**, **the experience registry**, and **the meta-guard**.
 
+## Repository settings (owner, once)
+
+`scripts/bootstrap-repo.sh` applies what cannot live in a file an agent can edit: the rulesets
+in `.github/rulesets/` (main takes pull requests only, requires `ci-complete` and `guard-label`,
+bypassed by nobody; release tags can never be deleted or re-pointed), the labels, secret
+scanning with push protection, Dependabot alerts and security updates, and rebase-only merges.
+It is idempotent — re-run it after changing a ruleset file. `tests/test_rulesets.py` checks the
+files; only running the script changes GitHub.
+
 ## Releasing
 
 The policy is ADR [0003](docs/decisions/0003-releases-and-versioning.md); this is the procedure.
