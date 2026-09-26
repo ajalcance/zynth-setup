@@ -46,6 +46,11 @@ Choose the failure direction before writing the control. Every way of being slop
 scope produces MORE asking, and a permission mechanism whose bugs produce more asking is one
 you can afford to be wrong about.
 
+**No-prompt mode** (`CLAUDE_HOOKS_NEVER_ASK`, the same switch as block_dangerous_bash.py): every
+`ask` becomes `deny`, so the failure direction still points away from a silent edit. A project
+running without prompts should not register this hook at all: there, a core-path edit is
+allowed and the owner's label on the pull request approves it.
+
 Contract: reads the PreToolUse JSON envelope on stdin, writes a permission decision as JSON on
 stdout, and always exits 0.
 """
@@ -110,7 +115,17 @@ MAX_HORIZON_DAYS = 45
 MIN_REASON_CHARS = 20
 
 
+NEVER_ASK = "CLAUDE_HOOKS_NEVER_ASK"
+
+
+def never_ask() -> bool:
+    """No-prompt mode: set, and not one of the spellings of "off"."""
+    return os.environ.get(NEVER_ASK, "").strip().lower() not in ("", "0", "false", "no", "off")
+
+
 def _emit(decision: str, reason: str) -> None:
+    if decision == "ask" and never_ask():
+        decision, reason = "deny", f"{reason} In no-prompt mode ({NEVER_ASK}) this is refused."
     json.dump(
         {
             "hookSpecificOutput": {

@@ -9,6 +9,26 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### An opt-in switch for running the agent without prompts
+
+- The Claude Code hooks read **`CLAUDE_HOOKS_NEVER_ASK`** from the settings' `env`. With it set,
+  a hook never asks: `block_dangerous_bash.py` refuses what it would have asked about (a tag
+  push, deleting a remote branch, a mutating `gh api` call, `gh label`), and `approved_scope.py`
+  denies instead of asking. **Off by default: nothing changes on update.** It is for owners who
+  run the agent unattended inside an OS sandbox and approve at the pull request instead. ADR
+  0007's new amendment says what else that model needs, and when not to use it.
+- A new guard test fails if any hook that can ask does not honour the switch.
+
+### Template repository (no change for adopters)
+
+- The agent works inside an OS sandbox here (ADR 0004): macOS Seatbelt, with a repo-only
+  GitHub token, applied to this repository only. `make sandbox-verify` proves it from child
+  processes. Running the gates inside it found three template weaknesses (backlog T19–T21),
+  among them a secret scan that cannot download through a proxy.
+- Nothing asks the owner any more (ADR 0005): the owner's acts are refused outright, and every
+  change is approved at the pull request. The hooks run with the new never-ask switch, and a
+  test holds the whole shape.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does

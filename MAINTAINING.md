@@ -185,6 +185,56 @@ scanning with push protection, Dependabot alerts and security updates, and rebas
 It is idempotent — re-run it after changing a ruleset file. `tests/test_rulesets.py` checks the
 files; only running the script changes GitHub.
 
+## The agent's sandbox (owner, per machine)
+
+ADR [0004](docs/decisions/0004-the-agent-works-inside-an-os-sandbox.md) says why; this is how.
+It uses the owner's Agent Sandbox Kit (generator v4, `~/bin/make-sandbox-settings.sh`).
+Everything runs in **your** terminal: the agent is denied its own settings file.
+
+- **Generate and apply.** Run the kit's steps with these flags:
+
+  ```
+  ~/bin/make-sandbox-settings.sh . --domain pypi.org --domain files.pythonhosted.org \
+    --domain registry.npmjs.org --domain semgrep.dev \
+    --write '~/.cache/pip' --write '~/Library/Caches/pip' --write '~/.npm' \
+    --write '~/.cache/pre-commit' --write '~/.cache/ci-tools' --write '~/.cache/secret-scan' \
+    --gh-config ~/.config/zynth-setup-agent-gh
+  ```
+
+  Then set `env.GH_CONFIG_DIR` to that folder, the repo-only token's.
+- **Wall off the rest of the home folder:** `bash scripts/sandbox-home-walls.sh`. The kit walls
+  off only the other projects and the credential stores. The script backs the file up first,
+  validates the result, and prints how many walls it added.
+- **Managed settings, once per Mac** (`/Library/Application Support/ClaudeCode/`): deny every
+  project's agent its own settings, the user's settings and the managed folder itself.
+- **Tool settings** (`env` in the same file), for tools that cannot reach the macOS trust
+  store from inside the sandbox. TLS is still verified, against `/etc/ssl/cert.pem`:
+  - `PIP_USE_DEPRECATED=legacy-certs`
+  - `PIP_CERT=/etc/ssl/cert.pem`
+  - `SSL_CERT_FILE=/etc/ssl/cert.pem`
+  - `SEMGREP_ENABLE_VERSION_CHECK=0`
+  - `SEMGREP_LOG_FILE=~/.cache/ci-tools/semgrep.log`
+  - `SEMGREP_SETTINGS_FILE=~/.cache/ci-tools/semgrep-settings.yml`
+
+  Write the last two with your home folder spelled out: they are literal strings.
+- **Restart the session**, then ask the agent for `make sandbox-verify`. By hand, check that
+  a standalone `gh api user -q .login` works, that the token is refused another repository
+  (`gh api repos/<owner>/<other>/collaborators` answers 403), and that the agent's Read tool is
+  refused a file in another project.
+- **No prompts** (ADR 0005). The committed `.claude/settings.json` has no `ask` rules, and
+  it sets `CLAUDE_HOOKS_NEVER_ASK`. After changing it, restart the session and choose **Bypass
+  permissions** in the app's permission-mode picker. Then have the agent run `make test`, which
+  holds the shape, and `make sandbox-verify`. Tags, releases, merges and labels are yours: the
+  agent prepares the command, and you run it.
+- **Install the commit hook once per clone:** `make hooks-install`, from your own terminal (the
+  sandbox refuses the agent a write to `.git/hooks`).
+- **Roll back:** copy the kit's `bak-pre-sandbox` backup of the settings file back over it,
+  then restart.
+- **A new project folder next to this one:** the sandbox already blocks it, because the parent
+  folder is denied. The agent's file tools need a regeneration: roll back, then re-apply.
+- **The token expires** 90 days after creation. Renew it with the kit's token step, then delete
+  the old token on GitHub.
+
 ## Releasing
 
 The policy is ADR [0003](docs/decisions/0003-releases-and-versioning.md); this is the procedure.

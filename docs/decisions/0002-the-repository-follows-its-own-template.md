@@ -33,6 +33,9 @@ following it — and every defect met while doing so is a question about the tem
    template ADR-0007 exists to prevent. So: a change to what judges the agent **here** asks
    locally; a change to what judges **adopters** is gated at the pull request by the owner's
    `guardrail-change` label, which the session hook refuses to let the agent apply.
+   *Superseded by ADR 0005 (2026-09-26): nothing asks. Both kinds of change are gated at the
+   pull request, the owner's acts are refused outright, and the OS sandbox of ADR 0004 bounds
+   the rest.*
 4. **Session hooks are copies, not pointers into `template/`.** A pointer would let an edit to
    the template change the agent's own live guard mid-session.
 5. **Dogfooding feeds the template.** Every defect found here is checked against the template

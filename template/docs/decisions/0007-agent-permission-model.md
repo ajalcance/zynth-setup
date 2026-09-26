@@ -147,7 +147,6 @@ trigger in `docs/PLAN.md` names: a separate GitHub account for the agent, after 
 meta-guard can check *who* applied the label, not only that it is there. Until then the claim
 is exactly this: the agent cannot approve its own change by any command it types.
 
-
 - Routine work stops prompting, so a prompt becomes informative again — it means *authority*.
 - This policy governs **Claude Code only**. Other agents and tools keep their own host-enforced
   permission systems; they share this repository's GitHub and CI controls, which is where the
@@ -159,3 +158,29 @@ is exactly this: the agent cannot approve its own change by any command it types
   settings an agent cannot reach.
 - Working in the `.devcontainer` sandbox is the intended place for looser prompting, since its
   default-deny egress firewall bounds the blast radius. Relax it there, not on the host.
+
+## Amendment (2026-09-26): a switch for projects that run without prompts
+
+A prompt is a control only while someone is watching. An owner who runs the agent unattended,
+inside an OS sandbox that bounds every command and every process it starts, takes approvals at
+the pull request and the merge instead. There, a hook that asks either interrupts nobody or is
+answered without being read, and a prompt that is answered without being read approves anything.
+
+So the hooks carry a switch, **`CLAUDE_HOOKS_NEVER_ASK`**, set in the settings' `env`. With it,
+nothing a hook would ask about is asked: `block_dangerous_bash.py` refuses it, and
+`approved_scope.py` denies it. **It is off by default, and this model is unchanged without it.**
+
+- **It only ever tightens.** What would ask is refused, what was refused stays refused, and
+  what was allowed stays allowed. Every value but an empty one or 0/false/no/off turns it on.
+  The agent cannot turn it off: the hooks read the session's environment, not a command's, and
+  the settings that set it are denied to the agent.
+- **It is half of a no-prompt model, not all of it.** The other half is a settings file with
+  no `ask` rules, and it is safe only when all of these are in place: an OS sandbox around
+  every command, the owner-only acts (tags, releases, merges, labels, repository settings)
+  denied outright, and every path that stops prompting covered by the meta-guard's label
+  check. A project that has these should not register `approved_scope.py`: there, a core-path
+  edit is allowed, and the label on the pull request approves it. Without a sandbox, keep the
+  prompts.
+- `tests/guards/test_hooks_never_ask.py` runs the real hooks in both modes. It also fails if
+  any hook that can emit `ask` does not read the switch, so a hook added later cannot put a
+  prompt back.
