@@ -88,6 +88,43 @@ def test_sed_in_place_outside_the_project_is_blocked():
     assert blocked(f"sed -i 's/a/b/' '{OUTSIDE}/config.toml'")
 
 
+# --- sed's script is not a file (backlog T18) --------------------------------------------
+#
+# Every word after `sed -i` was a target, so a script holding a `$` was an "unguessable path"
+# and the command was refused. Found preparing the v3.3.0 release.
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sed -i '' 's/a$/b/' docs/PLAN.md",
+        "sed -i 's/a$/b/' docs/PLAN.md",
+        "sed -i.bak 's/$HOME/x/' docs/PLAN.md",
+        "sed -i -e 's/a$/b/' -e 's/^c/d/' docs/PLAN.md docs/NOTES.md",
+        "sed -i -E --expression='s/(a)$/b/' docs/PLAN.md",
+        "sed -i '.orig' 's/a$/b/' docs/PLAN.md",
+    ],
+)
+def test_the_sed_script_is_not_read_as_a_path(command):
+    code, message = verdict(command)
+    assert code == 0, f"{command!r} was refused:\n{message}"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sed -i '' 's/a$/b/' ~/elsewhere/config.toml",
+        "sed -i -e 's/a/b/' ~/elsewhere/config.toml",
+        "sed -i 's/a/b/' docs/PLAN.md ~/elsewhere/config.toml",
+        "sed -i -f fix.sed ~/elsewhere/config.toml",
+        "sed -i --file=fix.sed ~/elsewhere/config.toml",
+        "sed -i '' 's/ask/allow/' .claude/settings.json",
+    ],
+)
+def test_every_file_sed_edits_is_still_judged(command):
+    assert blocked(command), f"must not be allowed: {command!r}"
+
+
 # --- What must stay possible ------------------------------------------------------------
 
 

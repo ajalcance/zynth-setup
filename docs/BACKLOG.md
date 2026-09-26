@@ -19,7 +19,6 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T15 | Dependabot security updates ignore `cooldown` (GitHub's design), so a security PR can propose a release published hours earlier — #21 proposed vitest 5.0.2, published that morning. Adopters' Dependabot does the same. Document it; the owner-consent flag (T12) is what makes such a PR get read. | Dependabot PR #21 |
 | T16 | GitHub moves `ubuntu-latest` to Ubuntu 26 on 2026-10-19. Every shipped workflow and this repository's CI run on it. Pin or test ahead of the switch rather than learn about it from a red scheduled run. | A CI annotation on the v3.2.1 run |
 | T17 | `docker/setup-buildx-action` and `docker/setup-qemu-action` target Node 20, which GitHub has deprecated and now forces to Node 24. Bump both where the template ships them (`release.yml`) and here. | A CI annotation on the v3.2.1 run |
-| T18 | The confinement hook reads a `sed -i` script as a file path: `sed -i '' 's/a$/b/' f` is refused because the script holds a `$`. Skip the script argument (the first non-option word, or each `-e` value). | Preparing the v3.3.0 release |
 
 ## Carried over
 
@@ -40,3 +39,4 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T13 | pre-commit pinned at one version across the template's manifests, and a guard that compares every manifest. | v3.3.0 |
 | T7 | Both Bash hooks share a quote-aware parser (`_shell.py`): no more "unbalanced quotes" on ordinary reads; `cd` applied in order; substitutions, wrappers and `sh -c` looked inside. | v3.3.0 |
 | T11 | Each dangerous-command rule reads one command's own words. Also caught two missed blocks: `git commit -n`/`-an` and `rm --recursive --force`. | v3.3.0 |
+| T18 | The confinement hook tells a `sed -i` script, backup suffix and option values apart from the files it edits (BSD and GNU). | next release |

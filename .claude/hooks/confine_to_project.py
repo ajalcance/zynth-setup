@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -122,6 +123,45 @@ def git_overwrite_targets(words: list[str]) -> list[str]:
     return [word for word in words[index + 1 :] if not word.startswith("-")]
 
 
+# `sed` options whose next word is a value, never a file it edits. `-e`/`-f` also mean the
+# script is not a bare word, so every remaining word is a file.
+SED_SCRIPT_OPTIONS = {"-e", "--expression", "-f", "--file"}
+SED_VALUE_OPTIONS = SED_SCRIPT_OPTIONS | {"-l", "--line-length"}
+# The backup suffix BSD `sed -i` takes as a separate word: `''` or something like `.bak`.
+SED_SUFFIX = re.compile(r"^(?:|\.[\w.-]*)$")
+
+
+def sed_files(arguments: list[str]) -> list[str]:
+    """The files `sed -i` edits — never its script, its backup suffix or an option's value.
+
+    Every word used to be a target, so the script `'s/a$/b/'` was a "path" holding a `$` and the
+    whole command was refused as unguessable. Both dialects: BSD takes the suffix as its own word
+    (`sed -i '' 's/x/y/' f`), GNU attaches it (`sed -i.bak ...`) or omits it (`sed -i 's/x/y/' f`).
+    Reading one word too many as a file is the safe direction; reading a file as the script is
+    not, so a bare script is skipped only when no `-e`/`-f` supplied it.
+    """
+    files: list[str] = []
+    script_given = False
+    index = 0
+    while index < len(arguments):
+        word = arguments[index]
+        if word in SED_VALUE_OPTIONS:
+            script_given = script_given or word in SED_SCRIPT_OPTIONS
+            index += 2
+            continue
+        if word.startswith(("--expression=", "--file=")) or (
+            word[:2] in {"-e", "-f"} and len(word) > 2
+        ):
+            script_given = True
+        elif word == "-i" and index + 1 < len(arguments) and SED_SUFFIX.match(arguments[index + 1]):
+            index += 2
+            continue
+        elif not word.startswith("-"):
+            files.append(word)
+        index += 1
+    return files if script_given else files[1:]
+
+
 def write_targets(command) -> list[str]:
     """Paths this command writes: its redirects, then a destructive verb's arguments."""
     targets = [
@@ -138,7 +178,8 @@ def write_targets(command) -> list[str]:
         # Only `sed -i` writes. `sed -n '1,5p' file` reads.
         if not any(a == "-i" or a.startswith("-i") for a in arguments):
             return targets
-    elif verb not in DESTRUCTIVE:
+        return targets + sed_files(arguments)
+    if verb not in DESTRUCTIVE:
         return targets
     targets.extend(a for a in arguments if not a.startswith("-"))
     return targets

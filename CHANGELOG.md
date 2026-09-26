@@ -9,6 +9,14 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### The confinement hook no longer reads a `sed` script as a file
+
+- `sed -i '' 's/a$/b/' file` was refused: every word after `sed -i` was treated as a path, so a
+  script holding a `$` was an "unguessable" target. The hook now tells the script, the backup
+  suffix (BSD `-i ''`, GNU `-i.bak`) and option values apart from the files `sed` edits — and
+  every one of those files is still judged, so an edit outside the project, or under
+  `.claude/`, is refused as before.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does
