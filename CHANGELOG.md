@@ -9,6 +9,14 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### Template repository (no change for adopters)
+
+- `make check` and `make verify` run inside the agent's OS sandbox. The end-of-file fixer
+  skips `.claude/`, which the sandbox will not let it open for writing; a read-only test holds
+  those files to the same rule. Inside the sandbox, `make verify` generates under `$TMPDIR`,
+  where a generated project may create its own `.git/config`, hooks and CA bundle. It prints
+  where it writes.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does
