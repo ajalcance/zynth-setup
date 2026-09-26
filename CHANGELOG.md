@@ -25,6 +25,9 @@ version must sort above the one before it.
   GitHub token, applied to this repository only. `make sandbox-verify` proves it from child
   processes. Running the gates inside it found three template weaknesses (backlog T19–T21),
   among them a secret scan that cannot download through a proxy.
+- Nothing asks the owner any more (ADR 0005): the owner's acts are refused outright, and every
+  change is approved at the pull request. The hooks run with the new never-ask switch, and a
+  test holds the whole shape.
 
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 

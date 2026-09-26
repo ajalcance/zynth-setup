@@ -71,11 +71,20 @@ If two disagree, the higher one wins and the lower one is a bug — fix it in th
 
 ## 4. The agent's permissions here
 
-`.claude/settings.json` is the template's permission model, split for what this repository
-is: a change to what judges the agent **here** (root `.claude/`, `.github/`, `scripts/`,
-`tests/`, `Makefile`, pins, hooks) **asks**; a change to what judges **adopters** (the guards
-under `template/`) is gated at the pull request by the owner's label. The settings files are
-denied; bypass mode is off. ADR 0002 has the reasoning.
+**Nothing asks** (ADR 0005). Every action either runs or is refused at once:
+
+- **Refused, because they are the owner's acts:** tags, releases, merges, labels, and
+  repository, secret and ruleset settings. The agent prepares the exact command and the owner
+  runs it from their own terminal.
+- **Refused, because they are irreversible or out of scope:** force pushes, deleting remote
+  refs, `reset --hard`, `git clean`, `--no-verify`, `ssh` and `docker`.
+- **Refused, because it is the agent's own policy:** all of `.claude/`.
+- **Everything else runs.** A change to what judges the agent here (`.github/`, `scripts/`,
+  `tests/`, the `Makefile`, the pins) or what judges adopters (`template/`) is approved at the
+  pull request, by the owner's `guardrail-change` label.
+
+The hooks never ask either (`CLAUDE_HOOKS_NEVER_ASK`). `tests/test_agent_policy.py` holds the
+shape.
 
 **The agent's shell runs in an OS sandbox** (ADR 0004). It is configured in
 `.claude/settings.local.json`, which is machine-local and the owner's. It is applied to this

@@ -221,6 +221,13 @@ Everything runs in **your** terminal: the agent is denied its own settings file.
   a standalone `gh api user -q .login` works, that the token is refused another repository
   (`gh api repos/<owner>/<other>/collaborators` answers 403), and that the agent's Read tool is
   refused a file in another project.
+- **No prompts** (ADR 0005). The committed `.claude/settings.json` has no `ask` rules, and
+  it sets `CLAUDE_HOOKS_NEVER_ASK`. After changing it, restart the session and choose **Bypass
+  permissions** in the app's permission-mode picker. Then have the agent run `make test`, which
+  holds the shape, and `make sandbox-verify`. Tags, releases, merges and labels are yours: the
+  agent prepares the command, and you run it.
+- **Install the commit hook once per clone:** `make hooks-install`, from your own terminal (the
+  sandbox refuses the agent a write to `.git/hooks`).
 - **Roll back:** copy the kit's `bak-pre-sandbox` backup of the settings file back over it,
   then restart.
 - **A new project folder next to this one:** the sandbox already blocks it, because the parent
