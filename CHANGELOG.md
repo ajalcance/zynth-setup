@@ -9,6 +9,16 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### An opt-in switch for running the agent without prompts
+
+- The Claude Code hooks read **`CLAUDE_HOOKS_NEVER_ASK`** from the settings' `env`. With it set,
+  a hook never asks: `block_dangerous_bash.py` refuses what it would have asked about (a tag
+  push, deleting a remote branch, a mutating `gh api` call, `gh label`), and `approved_scope.py`
+  denies instead of asking. **Off by default: nothing changes on update.** It is for owners who
+  run the agent unattended inside an OS sandbox and approve at the pull request instead. ADR
+  0007's new amendment says what else that model needs, and when not to use it.
+- A new guard test fails if any hook that can ask does not honour the switch.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does
