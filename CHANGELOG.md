@@ -9,6 +9,20 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### The secret scan works behind a proxy, and a failed download is never a "leak"
+
+- `scripts/secret_scan.py` ignored `HTTPS_PROXY`. Behind a corporate proxy, or inside an agent
+  sandbox whose only way out is its proxy, it could not download gitleaks and refused on every
+  run. It now goes through the proxy. Nothing else changes: it still speaks HTTPS only, and a
+  proxied `http://` or `ftp://` URL is still refused.
+- **A download cut short crashed the scan with exit code 1, which means "secret found".** Python
+  exits 1 on an uncaught exception, and a short read (`IncompleteRead`) was not caught. A
+  transfer cut short now resumes where it stopped (an HTTP `Range` request), for up to 5
+  attempts. Through an agent sandbox's proxy, every download stopped a few KB early. Nothing is
+  written until the whole file has arrived, the checksum still decides, and otherwise the
+  scan refuses with exit 2. **Any crash is now exit 2, "could not scan", never 1.** CI
+  treats both as a failure, but a person reading a leak alarm acts differently.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does

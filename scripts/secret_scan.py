@@ -19,9 +19,10 @@ Four properties, each of which is a fault test in ``tests/guards/test_secret_sca
    input and that the config has not been widened — an allowlist that exempts one directory
    fails the canary for that directory. The audit that motivated this found exactly that hole.
 4. **It fails closed** on a checksum mismatch, a canary miss, an unresolvable ref, a range with
-   an empty side, and a range with no commits. The exit codes are distinct on purpose: a leak
-   and an inability to scan must never share one, because that is how a fix to a silent check
-   becomes silent itself.
+   an empty side, a range with no commits, a download that never completes, and any crash. The
+   exit codes are distinct on purpose: a leak and an inability to scan must never share one,
+   because that is how a fix to a silent check becomes silent itself. Python's own exit code
+   for an uncaught exception is 1, the leak code, so no exception is left uncaught.
 
 Baseline: a fresh project's root commit. There is no ignore list — an ignore list is an
 exemption that only ever grows. If history is ever triaged, record that commit and pass
@@ -40,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import platform
@@ -48,6 +50,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -65,6 +68,11 @@ CHECKSUMS = {
 }
 RELEASES = "https://github.com/gitleaks/gitleaks/releases/download"
 CACHE = Path(os.environ.get("SECRET_SCAN_CACHE", Path.home() / ".cache" / "secret-scan"))
+# A proxy can cut a download short: through an agent sandbox's proxy, 3 in a row stopped a few
+# KB before the end. Attempts after the first resume where the last stopped. The checksum decides
+# whether a tarball is used; the attempts only decide whether one arrives.
+DOWNLOAD_ATTEMPTS = 5
+RETRY_PAUSE_SECONDS = 2.0
 
 # GitHub's "no previous commit" marker on the first push to a ref. Genuinely means "there is
 # no base", not "the base is missing" — so it is the one unresolvable value that is handled
@@ -119,6 +127,10 @@ def _https_only_opener() -> urllib.request.OpenerDirector:
     """
     opener = urllib.request.OpenerDirector()
     for handler in (
+        # HTTPS_PROXY / NO_PROXY from the environment: a corporate proxy, or an agent sandbox
+        # whose only way out is its proxy. It tunnels HTTPS and adds no scheme: a proxied
+        # http:// or ftp:// URL still finds no handler and is refused.
+        urllib.request.ProxyHandler(),
         urllib.request.HTTPSHandler(),
         urllib.request.HTTPRedirectHandler(),  # github.com redirects release assets
         urllib.request.HTTPDefaultErrorHandler(),
@@ -131,6 +143,42 @@ def _https_only_opener() -> urllib.request.OpenerDirector:
     return opener
 
 
+def _download(url: str, dest: Path) -> None:
+    """Fetch url into dest, resuming a transfer that arrives short.
+
+    A short read raises http.client.IncompleteRead, which is not an OSError: it escaped the
+    old handler and crashed the scan with exit 1, the LEAK code. A proxy that cuts transfers
+    short tends to cut them all at about the same point, so a plain retry fails the same way:
+    the next attempt asks only for the missing bytes (an HTTP Range request) and starts over
+    if the server answers with the whole file instead. Nothing is written until the whole
+    body has arrived, and the checksum decides whether it is used.
+    """
+    body = b""
+    last: Exception | None = None
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        request = urllib.request.Request(url)
+        if body:
+            request.add_header("Range", f"bytes={len(body)}-")
+        try:
+            with _https_only_opener().open(request, timeout=60) as response:
+                kept = body if response.status == 206 else b""  # 206: the range was honoured
+                try:
+                    body = kept + response.read()
+                except http.client.IncompleteRead as exc:
+                    body = kept + exc.partial
+                    raise
+        except (OSError, http.client.HTTPException) as exc:
+            last = exc
+            if attempt < DOWNLOAD_ATTEMPTS:
+                time.sleep(RETRY_PAUSE_SECONDS)
+            continue
+        dest.write_bytes(body)
+        return
+    raise ScanRefusedError(
+        f"could not download {url} in {DOWNLOAD_ATTEMPTS} attempt(s) — last error: {last!r}"
+    )
+
+
 def ensure_binary() -> Path:
     """The pinned gitleaks, verified by checksum on EVERY run — the cache is not trusted."""
     key = _platform_key()
@@ -141,12 +189,7 @@ def ensure_binary() -> Path:
     binary = version_dir / f"gitleaks-{key}"
 
     if not tarball.is_file():
-        url = f"{RELEASES}/v{VERSION}/gitleaks_{VERSION}_{key}.tar.gz"
-        try:
-            with _https_only_opener().open(url, timeout=60) as response:
-                tarball.write_bytes(response.read())
-        except OSError as exc:
-            raise ScanRefusedError(f"could not download {url} — {exc}") from exc
+        _download(f"{RELEASES}/v{VERSION}/gitleaks_{VERSION}_{key}.tar.gz", tarball)
 
     actual = _sha256(tarball)
     if actual != expected:
@@ -410,5 +453,14 @@ def main() -> int:
     return EXIT_CLEAN
 
 
+def run() -> int:
+    """main(), with every crash reported as a refusal (2), never as a leak (1)."""
+    try:
+        return main()
+    except Exception as exc:  # every crash means "could not scan"
+        print(f"secret-scan: REFUSED — the scan crashed: {exc!r}")
+        return EXIT_REFUSED
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())

@@ -17,11 +17,13 @@ step in the same job.
 
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import os
 import re
 import shutil
 import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -86,16 +88,148 @@ def _sandbox(tmp_path: Path, *, config: Path = CONFIG) -> Path:
 # --- The scanner can see, and the tree this project ships is clean ----------------------
 
 
-def test_the_downloader_can_only_speak_https():
-    """A run-time URL is safe when the opener has no handler for anything but HTTPS."""
+def _load_guard():
     spec = importlib.util.spec_from_file_location("secret_scan", GUARD)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
-    opener = module._https_only_opener()
+    return module
+
+
+PROXIES = {
+    name: "http://proxy.invalid:3128"
+    for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "FTP_PROXY", "ftp_proxy")
+}
+
+
+@pytest.mark.parametrize("proxied", [False, True], ids=["direct", "behind-a-proxy"])
+def test_the_downloader_can_only_speak_https(proxied, monkeypatch):
+    """A run-time URL is safe when the opener has no handler for anything but HTTPS.
+
+    Behind a proxy too: routing through one must not hand http:// or ftp:// a handler.
+    """
+    for name in PROXIES:
+        monkeypatch.delenv(name, raising=False)
+    if proxied:
+        for name, value in PROXIES.items():
+            monkeypatch.setenv(name, value)
+    opener = _load_guard()._https_only_opener()
     for url in ("file:///etc/hosts", "http://example.invalid/x", "ftp://example.invalid/x"):
         with pytest.raises(urllib.error.URLError, match="unknown url type"):
             opener.open(url, timeout=5)
+
+
+def test_the_downloader_goes_through_the_proxy_it_is_given(monkeypatch):
+    # Without this the scan cannot fetch gitleaks behind a corporate proxy or an agent sandbox,
+    # and refuses on every run. Both spellings are cleared: Python prefers the lowercase one.
+    for name in PROXIES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("https_proxy", "http://proxy.invalid:3128")
+    opener = _load_guard()._https_only_opener()
+    proxies = [h for h in opener.handlers if isinstance(h, urllib.request.ProxyHandler)]
+    assert proxies and proxies[0].proxies.get("https") == "http://proxy.invalid:3128"
+
+
+BODY = b"gitleaks-tarball"
+
+
+class _Transfers:
+    """An opener serving BODY. The first `short` transfers stop `cut` bytes early.
+
+    honour_range=False plays a server that ignores Range and sends the whole file again.
+    """
+
+    def __init__(self, short: int, cut: int = 4, honour_range: bool = True) -> None:
+        self.short, self.cut, self.honour_range = short, cut, honour_range
+        self.ranges: list[str | None] = []
+
+    def open(self, request, timeout):
+        wanted = request.get_header("Range")
+        self.ranges.append(wanted)
+        start = int(wanted[len("bytes=") : -1]) if wanted and self.honour_range else 0
+        payload = BODY[start:]
+        short = len(self.ranges) <= self.short
+        cut = self.cut
+
+        class Response:
+            status = 206 if start else 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                if short:
+                    raise http.client.IncompleteRead(payload[:-cut], cut)
+                return payload
+
+        return Response()
+
+
+@pytest.fixture
+def guard(monkeypatch):
+    module = _load_guard()
+    monkeypatch.setattr(module, "RETRY_PAUSE_SECONDS", 0)
+    return module
+
+
+def _fetch(guard, monkeypatch, tmp_path, transfers):
+    monkeypatch.setattr(guard, "_https_only_opener", lambda: transfers)
+    guard._download("https://example.invalid/x", tmp_path / "t")
+    return (tmp_path / "t").read_bytes()
+
+
+def test_a_short_download_resumes_where_it_stopped(guard, monkeypatch, tmp_path):
+    transfers = _Transfers(short=1, cut=4)
+    assert _fetch(guard, monkeypatch, tmp_path, transfers) == BODY
+    assert transfers.ranges == [None, f"bytes={len(BODY) - 4}-"], "did not ask for the rest"
+
+
+def test_short_downloads_keep_resuming(guard, monkeypatch, tmp_path):
+    # A proxy that cuts every transfer a few bytes short: each attempt adds what it got.
+    transfers = _Transfers(short=guard.DOWNLOAD_ATTEMPTS - 1, cut=2)
+    assert _fetch(guard, monkeypatch, tmp_path, transfers) == BODY
+    assert len(transfers.ranges) == guard.DOWNLOAD_ATTEMPTS
+
+
+def test_a_server_that_ignores_the_range_starts_over(guard, monkeypatch, tmp_path):
+    # A 200 in answer to a Range request is the whole file: appending it would corrupt the
+    # tarball (the checksum would refuse it, but only after wasting every attempt).
+    transfers = _Transfers(short=1, cut=4, honour_range=False)
+    assert _fetch(guard, monkeypatch, tmp_path, transfers) == BODY
+
+
+def test_a_download_that_never_completes_is_refused_and_writes_nothing(
+    guard, monkeypatch, tmp_path
+):
+    transfers = _Transfers(short=99, cut=len(BODY))
+    with pytest.raises(guard.ScanRefusedError, match="IncompleteRead"):
+        _fetch(guard, monkeypatch, tmp_path, transfers)
+    assert len(transfers.ranges) == guard.DOWNLOAD_ATTEMPTS >= 2
+    assert not (tmp_path / "t").exists(), "a partial tarball was left for the next run"
+
+
+def test_any_crash_is_a_refusal_never_a_leak(guard, monkeypatch, capsys):
+    # An uncaught exception exits 1 — the LEAK code. A crash means "could not scan".
+    def crash() -> int:
+        raise http.client.IncompleteRead(b"", 1)
+
+    monkeypatch.setattr(guard, "main", crash)
+    assert guard.run() == REFUSED
+    assert "REFUSED" in capsys.readouterr().out
+
+
+def test_a_crash_in_a_real_run_exits_refused(tmp_path):
+    # End to end: a cache path that is a FILE makes the scan crash before it can download.
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("")
+    result = run_guard(
+        GUARD, "--canary-only", cwd=REPO_ROOT, env={"SECRET_SCAN_CACHE": str(blocker)}
+    )
+    assert result.returncode == REFUSED, result.stdout + result.stderr
+    assert "REFUSED" in result.stdout
 
 
 def test_the_canary_finds_a_planted_token_in_every_tree(cache):
