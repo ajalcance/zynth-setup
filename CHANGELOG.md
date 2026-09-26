@@ -9,6 +9,13 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### Template repository (no change for adopters)
+
+- The agent works inside an OS sandbox here (ADR 0004): macOS Seatbelt, with a repo-only
+  GitHub token, applied to this repository only. `make sandbox-verify` proves it from child
+  processes. Running the gates inside it found three template weaknesses (backlog T19–T21),
+  among them a secret scan that cannot download through a proxy.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does

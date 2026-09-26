@@ -77,6 +77,22 @@ is: a change to what judges the agent **here** (root `.claude/`, `.github/`, `sc
 under `template/`) is gated at the pull request by the owner's label. The settings files are
 denied; bypass mode is off. ADR 0002 has the reasoning.
 
+**The agent's shell runs in an OS sandbox** (ADR 0004). It is configured in
+`.claude/settings.local.json`, which is machine-local and the owner's. It is applied to this
+repository only, never the template. Every command and every process it starts is walled off
+from other projects, credentials and unlisted hosts. `make sandbox-verify` proves it from
+child processes; run it after any change to the settings, and it fails outside the sandbox by
+design. Habits the sandbox requires:
+
+- **`gh` and `git commit` run as standalone commands**: never piped, chained or given a
+  heredoc. A chained `gh` runs sandboxed, cannot do TLS, and misreports "invalid token".
+- **Nothing writes `.git/config`**: no `git push -u`, and create branches with
+  `git switch --no-track -c`. A refused write leaves a half-done switch, so check
+  `git branch --show-current` before committing.
+- **Commit messages come from a file** in `.copier-test/`, passed with `git commit -F`.
+- **When a check fails on a sandbox refusal, fix the check.** Never ask for a wider sandbox to
+  get past it. A host or path is added only when real work needs it, by the owner.
+
 ## 5. Commits
 
 Conventional commits. The subject says what was wrong, not only what changed. The body says
