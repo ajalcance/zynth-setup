@@ -239,6 +239,78 @@ def test_a_merge_cannot_reintroduce_unreviewed_history():
     ], "linear history plus an unrestricted merge method lets a merge commit through"
 
 
+# --- The repository settings the bootstrap applies (backlog T1, T2, T10) -----------------
+
+TAG_RULESET = REPO_ROOT / ".github" / "rulesets" / "tags.json"
+BOOTSTRAP = REPO_ROOT / "scripts" / "bootstrap-repo.sh"
+# The pull_request rule's documented parameters (GitHub REST, repository rules). This ruleset
+# shipped `require_extra_approval_for_unattributed_changes`, which the reference does not
+# document: GitHub either refuses the bootstrap or ignores it, and a setting that is silently
+# ignored is a control claiming more than it does.
+PULL_REQUEST_PARAMETERS = {
+    "allowed_merge_methods",
+    "dismiss_stale_reviews_on_push",
+    "dismissal_restriction",
+    "require_code_owner_review",
+    "require_last_push_approval",
+    "required_approving_review_count",
+    "required_review_thread_resolution",
+    "required_reviewers",
+}
+
+
+def test_the_pull_request_rule_uses_only_documented_parameters():
+    pull_request = [r for r in _ruleset()["rules"] if r["type"] == "pull_request"][0]
+    undocumented = set(pull_request["parameters"]) - PULL_REQUEST_PARAMETERS
+    assert not undocumented, f"parameters GitHub does not document: {undocumented}"
+
+
+def test_a_release_tag_can_never_be_moved_or_deleted():
+    """release.yml publishes on a v* tag; unprotected, a published release could be re-pointed."""
+    tags = json.loads(TAG_RULESET.read_text())
+    assert tags["target"] == "tag" and tags["enforcement"] == "active"
+    assert tags["bypass_actors"] == [], "a bypass actor on the tag rule is a hole with a name"
+    assert "refs/tags/v*" in tags["conditions"]["ref_name"]["include"]
+    assert {"deletion", "update", "non_fast_forward"} <= {r["type"] for r in tags["rules"]}
+
+
+def test_the_tag_rule_covers_every_tag_a_release_is_published_from():
+    if not RELEASE_WF.is_file():
+        pytest.skip("the deploy module is not enabled in this project")
+    published = _workflow(RELEASE_WF)[True]["push"]["tags"]
+    protected = json.loads(TAG_RULESET.read_text())["conditions"]["ref_name"]["include"]
+    uncovered = [p for p in published if f"refs/tags/{p}" not in protected]
+    assert not uncovered, f"release tags nothing protects: {uncovered}"
+
+
+def test_the_bootstrap_offers_only_the_merge_method_the_ruleset_allows():
+    """A merge button the ruleset then refuses is a trap."""
+    allowed = [r for r in _ruleset()["rules"] if r["type"] == "pull_request"][0]["parameters"][
+        "allowed_merge_methods"
+    ]
+    script = BOOTSTRAP.read_text()
+    flags = {
+        "squash": "allow_squash_merge",
+        "rebase": "allow_rebase_merge",
+        "merge": "allow_merge_commit",
+    }
+    for method, flag in flags.items():
+        expected = "true" if method in allowed else "false"
+        assert f"-F {flag}={expected}" in script, f"bootstrap sets {flag} against the ruleset"
+
+
+def test_the_bootstrap_turns_on_every_security_feature_it_can():
+    """Nothing turned these on: secret scanning, push protection and Dependabot alerts were off."""
+    script = BOOTSTRAP.read_text()
+    for needed in (
+        '"secret_scanning": { "status": "enabled" }',
+        '"secret_scanning_push_protection": { "status": "enabled" }',
+        "vulnerability-alerts",
+        "automated-security-fixes",
+    ):
+        assert needed in script, f"scripts/bootstrap-repo.sh never enables {needed}"
+
+
 # --- A hung job holds a runner, and the default is six hours ----------------------------
 
 

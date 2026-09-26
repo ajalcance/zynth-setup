@@ -8,7 +8,10 @@
 #
 # Enforcement lives in repo settings (not a committed file), so an agent working in
 # the repo cannot make CI non-required or merge past it. See docs/decisions/0004.
-# Idempotent: re-running updates the existing ruleset in place.
+# Applies every ruleset in .github/rulesets/ — main (pull requests only, ci-complete
+# required, no bypass) and release tags (v* can never be deleted or re-pointed) — then
+# the labels, the security features your plan allows, and merge settings that match the
+# ruleset. Idempotent: re-running updates everything in place.
 # ==============================================================================
 set -euo pipefail
 
@@ -75,6 +78,49 @@ for entry in "${labels[@]}"; do
   gh label create "$name" --repo "$repo" --color "$colour" --description "$description" --force >/dev/null
   echo "✓ label '$name'"
 done
+
+# ------------------------------------------------------------------------------
+# Security features. Nothing turned these on, so an adopter's repository ran with secret
+# scanning, push protection and Dependabot alerts OFF unless someone went looking. Each is
+# attempted and its outcome printed: on a PRIVATE repository without GitHub Advanced Security,
+# secret scanning is unavailable — said out loud, not failed on, because the committed gates
+# still scan (gitleaks in pre-commit, and the canary-checked secret scan in CI).
+# ------------------------------------------------------------------------------
+echo
+echo "Enabling security features on $repo ..."
+if gh api -X PATCH "repos/$repo" --input - >/dev/null 2>&1 <<'JSON'
+{
+  "security_and_analysis": {
+    "secret_scanning": { "status": "enabled" },
+    "secret_scanning_push_protection": { "status": "enabled" }
+  }
+}
+JSON
+then
+  echo "✓ secret scanning + push protection"
+else
+  echo "⚠ secret scanning + push protection NOT enabled — unavailable on this plan (a private"
+  echo "  repository needs GitHub Advanced Security). CI's secret scan and the gitleaks hook"
+  echo "  still run; enable it in Settings → Code security if your plan allows."
+fi
+if gh api -X PUT "repos/$repo/vulnerability-alerts" >/dev/null 2>&1; then
+  echo "✓ Dependabot alerts"
+else
+  echo "⚠ Dependabot alerts NOT enabled — enable them in Settings → Code security."
+fi
+if gh api -X PUT "repos/$repo/automated-security-fixes" >/dev/null 2>&1; then
+  echo "✓ Dependabot security updates"
+else
+  echo "⚠ Dependabot security updates NOT enabled — enable them in Settings → Code security."
+fi
+
+# Merge settings that match the ruleset: it allows squash only, so a merge button offering
+# anything else is a button the ruleset then refuses. tests/guards/test_workflow_invariants.py
+# holds the two files to the same answer.
+gh api -X PATCH "repos/$repo" \
+  -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false \
+  -F delete_branch_on_merge=true >/dev/null
+echo "✓ merges: squash only (the ruleset's one method); merged branches deleted"
 
 echo
 echo "Verify:  gh api repos/$repo/rulesets --jq '.[].name'"

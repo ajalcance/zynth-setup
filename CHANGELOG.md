@@ -9,6 +9,23 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### Your repository settings: release tags protected, security features on
+
+- **Release tags can no longer be moved or deleted.** The shipped ruleset protected `main`
+  only, yet `release.yml` publishes on a `v*` tag — a published release could be re-pointed.
+  A second ruleset (`.github/rulesets/tags.json`) refuses deleting, updating or force-moving
+  any `v*` tag; the bootstrap applies it with the other.
+- **The bootstrap turns on secret scanning, push protection and Dependabot alerts and security
+  updates.** Nothing did before. On a private repository without GitHub Advanced Security,
+  secret scanning is unavailable — the bootstrap says so and carries on; CI's secret scan and
+  the gitleaks hook still run.
+- **Merge settings now match the ruleset** (squash only; merged branches deleted), so no merge
+  button offers a method the ruleset then refuses.
+- The main ruleset no longer sets `require_extra_approval_for_unattributed_changes`, a parameter
+  GitHub's API reference does not document — a setting either refused or silently ignored.
+- **On update:** re-run `scripts/bootstrap-repo.sh` once to apply the tag ruleset and the
+  settings.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does
