@@ -32,6 +32,13 @@ starts. The owner asked for it here, and **only here, not in the template**.
      memory; `~/.ssh`, `~/.config/gh` and the other credential stores; the project's `.env`
      files; writes to `.claude/`, `.git/config` and git hooks; any host that is not one of
      GitHub, PyPI, npm or semgrep.dev.
+   - **The rest of the home folder** (`scripts/sandbox-home-walls.sh`): Desktop, Downloads,
+     the rest of Documents, Pictures, Movies, Music, Mail, Messages, Safari, cookies, iCloud
+     Drive, browser profiles, shell history, and other AI tools' configuration. The kit walls
+     off siblings and credentials only; a prompt-injected build step reading `~/Downloads` is
+     the same leak. `.env` files are also denied to the file tools by name, at any depth.
+   - **Machine-wide**, through managed settings no project can override: no project's agent
+     may edit its own settings, the user's settings, or the managed settings themselves.
    - **Allowed:** writes inside the project, `$TMPDIR` and the tool caches named in
      MAINTAINING.md.
    - `failIfUnavailable` is on, and no unsandboxed command is allowed.
@@ -49,12 +56,18 @@ starts. The owner asked for it here, and **only here, not in the template**.
    - semgrep's log, settings and version check moved into an already-allowed cache.
 
    TLS is verified in every case.
-5. **Proved, not assumed.** `make sandbox-verify` (`scripts/check_sandbox.py`) runs 11 probes,
-   each in its own child process: 9 things the sandbox must refuse and 2 controls it must
-   allow (a sandbox that refuses everything would otherwise pass). It prints the denominator,
-   and it fails outside the sandbox, in CI or the owner's terminal, by design. Two things a
-   child process cannot observe are checked by hand after any change to the settings:
+5. **Proved, not assumed.** `make sandbox-verify` (`scripts/check_sandbox.py`) runs 17 probes,
+   each in its own child process. 14 must be refused. 3 are controls it must allow, including
+   this project inside the walled Documents, so a sandbox that refuses everything cannot pass.
+   A walled folder is probed by listing it: Seatbelt lets a folder's lookup through and
+   refuses only its listing, so a `stat()` probe reads "allowed" on a wall that holds. The
+   check prints the denominator, and it fails outside the sandbox, in CI or the owner's
+   terminal, by design. Three things a child process cannot observe are checked by hand after
+   any change to the settings:
    - a standalone `gh` works with the repo-only token;
+   - that token is refused another repository: `gh api repos/<owner>/<other>/collaborators`
+     answers 403, "Resource not accessible by personal access token". It still *lists* the
+     owner's public repositories, because anyone may read those;
    - the agent's Read tool is refused a file in a sibling project.
 6. **Not in the template.** The kit is macOS-specific and its settings name this machine's
    paths. The template already ships its own isolation for adopters: the agent devcontainer.

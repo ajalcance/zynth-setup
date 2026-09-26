@@ -61,6 +61,22 @@ def _append_nothing(path: pathlib.Path) -> str:
     return f"    open({str(path)!r}, 'a').close()"
 
 
+def _stat(path: pathlib.Path) -> str:
+    # Metadata only. A walled FILE refuses even this; a walled FOLDER does not (Seatbelt lets a
+    # lookup through and refuses the listing), so folders are probed with _list instead.
+    return f"    __import__('os').stat({str(path)!r})"
+
+
+def _list(path: pathlib.Path) -> str:
+    # The child discards what it lists: only "refused or not" leaves the process.
+    return f"    __import__('os').listdir({str(path)!r})"
+
+
+# The rest of the home folder (ADR 0004). Only paths every Mac has: a missing one proves nothing.
+HOME_WALL_FOLDERS = ("Desktop", "Downloads", "Documents", "Library/Mail")
+HOME_WALL_FILES = (".zsh_history",)
+
+
 def _fetch(url: str) -> str:
     return f"    __import__('urllib.request').request.urlopen({url!r}, timeout=20).read(1)"
 
@@ -103,8 +119,11 @@ def probes() -> list[Probe]:
             _write_new(ROOT / ".claude" / marker),
             ROOT / ".claude" / marker,
         ),
+        *(Probe(f"list ~/{wall}", DENIED, _list(HOME / wall)) for wall in HOME_WALL_FOLDERS),
+        *(Probe(f"look at ~/{wall}", DENIED, _stat(HOME / wall)) for wall in HOME_WALL_FILES),
         Probe("reach a host not on the allowlist", DENIED, _fetch("https://example.com/")),
         # The controls: a sandbox that refuses everything would pass every probe above.
+        Probe("look at this project, inside the walled ~/Documents", ALLOWED, _stat(ROOT)),
         Probe(
             "write inside the project",
             ALLOWED,

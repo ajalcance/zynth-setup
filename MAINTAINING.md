@@ -202,6 +202,11 @@ Everything runs in **your** terminal: the agent is denied its own settings file.
   ```
 
   Then set `env.GH_CONFIG_DIR` to that folder, the repo-only token's.
+- **Wall off the rest of the home folder:** `bash scripts/sandbox-home-walls.sh`. The kit walls
+  off only the other projects and the credential stores. The script backs the file up first,
+  validates the result, and prints how many walls it added.
+- **Managed settings, once per Mac** (`/Library/Application Support/ClaudeCode/`): deny every
+  project's agent its own settings, the user's settings and the managed folder itself.
 - **Tool settings** (`env` in the same file), for tools that cannot reach the macOS trust
   store from inside the sandbox. TLS is still verified, against `/etc/ssl/cert.pem`:
   - `PIP_USE_DEPRECATED=legacy-certs`
@@ -213,8 +218,9 @@ Everything runs in **your** terminal: the agent is denied its own settings file.
 
   Write the last two with your home folder spelled out: they are literal strings.
 - **Restart the session**, then ask the agent for `make sandbox-verify`. By hand, check that
-  a standalone `gh api user -q .login` works, and that the agent's Read tool is refused a file
-  in another project.
+  a standalone `gh api user -q .login` works, that the token is refused another repository
+  (`gh api repos/<owner>/<other>/collaborators` answers 403), and that the agent's Read tool is
+  refused a file in another project.
 - **Roll back:** copy the kit's `bak-pre-sandbox` backup of the settings file back over it,
   then restart.
 - **A new project folder next to this one:** the sandbox already blocks it, because the parent
