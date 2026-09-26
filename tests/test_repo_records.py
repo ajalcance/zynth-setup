@@ -130,3 +130,49 @@ def test_verify_refuses_an_unknown_variant(tmp_path):
         env={**os.environ, "COPIER": str(fake)},
     )
     assert result.returncode == 2 and "unknown variant" in result.stderr
+
+
+def _verify_output(tmp_path, **env: str) -> str:
+    """Run verify up to its first refusal; return the output folder it announced."""
+    fake = tmp_path / "copier"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    base = {k: v for k, v in os.environ.items() if k != "SANDBOX_RUNTIME"}
+    result = subprocess.run(
+        ["bash", str(SCRIPTS / "verify-generations.sh"), "no-such-variant"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**base, "COPIER": str(fake), **env},
+    )
+    announced = [x for x in result.stdout.splitlines() if x.startswith("verify: output in ")]
+    assert announced, f"verify did not say where it writes: {result.stdout!r}"
+    return announced[0].removeprefix("verify: output in ")
+
+
+def test_verify_writes_inside_the_project_outside_the_sandbox(tmp_path):
+    assert _verify_output(tmp_path, TMPDIR=str(tmp_path)) == str(ROOT / ".copier-test")
+
+
+def test_verify_writes_to_tmpdir_inside_the_sandbox(tmp_path):
+    # Under the project the sandbox refuses a generated project's .git/config, hooks and *.pem.
+    out = _verify_output(tmp_path, SANDBOX_RUNTIME="1", TMPDIR=f"{tmp_path}/")
+    assert out == str(tmp_path / "zynth-setup-verify")
+    assert (tmp_path / "zynth-setup-verify").is_dir()
+
+
+def test_verify_refuses_inside_the_sandbox_without_tmpdir(tmp_path):
+    fake = tmp_path / "copier"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if k != "TMPDIR"}
+    result = subprocess.run(
+        ["bash", str(SCRIPTS / "verify-generations.sh"), "minimal"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**env, "COPIER": str(fake), "SANDBOX_RUNTIME": "1"},
+    )
+    assert result.returncode != 0 and "TMPDIR is unset" in result.stderr

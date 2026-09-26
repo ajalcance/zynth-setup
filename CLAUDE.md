@@ -55,7 +55,9 @@ If two disagree, the higher one wins and the lower one is a bug — fix it in th
     `scripts/check_unicode_hazards.py` and `.claude/hooks/*.py` are copies (they locate the
     repository from their own path). Change the template's, then copy. Tests fail on drift.
 12. **Scratch work goes in `.copier-test/`**, inside the project. The confinement hook refuses
-    changes outside it.
+    changes outside it. One exception: inside the agent's OS sandbox, `make verify` generates
+    under `$TMPDIR`, because the sandbox refuses a generated project's `.git/config`, hooks
+    and `*.pem` files anywhere under the project. It prints where it writes.
 13. **Every defect found here is a question about the template.** Does an adopter have the same
     weakness? Record it in `docs/BACKLOG.md` in the same change.
 

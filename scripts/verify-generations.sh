@@ -15,12 +15,20 @@
 # gates, which need Node, Docker and QEMU; this is the part every maintainer can run.
 #
 # Output goes to .copier-test/ (ignored), inside the project: the confinement hook refuses
-# changes outside it. Usage: scripts/verify-generations.sh [variant ...]
+# changes outside it. Inside the agent's OS sandbox (ADR 0004; Claude Code sets
+# SANDBOX_RUNTIME) it goes to $TMPDIR instead. Under the project the sandbox refuses every
+# .git/config, git hook and *.pem file, and a generated project needs all three: `git
+# init`, its pre-commit hook, the CA bundle in its venv. $TMPDIR is already writable
+# there, so nothing is widened. Usage: scripts/verify-generations.sh [variant ...]
 # ==============================================================================
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="$root/.copier-test"
+if [ -n "${SANDBOX_RUNTIME:-}" ]; then
+  tmp="${TMPDIR:?verify: inside the sandbox but TMPDIR is unset}"
+  out="${tmp%/}/zynth-setup-verify"
+fi
 copier="${COPIER:-$root/.venv/bin/copier}"
 [ -x "$copier" ] || { echo "verify: REFUSED — no copier at $copier. Run \`make venv\`." >&2; exit 2; }
 
@@ -39,6 +47,7 @@ variants=("$@")
 failures=0
 report=()
 mkdir -p "$out"
+echo "verify: output in $out"
 
 for variant in "${variants[@]}"; do
   data="$(variant_data "$variant")" || { echo "verify: unknown variant '$variant'" >&2; exit 2; }

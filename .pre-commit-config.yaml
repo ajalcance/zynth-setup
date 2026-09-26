@@ -1,11 +1,16 @@
 # Pre-commit hooks for the TEMPLATE repository — the same hooks, at the same commit SHAs, as the
 # template ships (template/.pre-commit-config.yaml). Setup once: `make venv && make hooks-install`.
 #
-# One difference, and its reason: the whitespace and end-of-file FIXERS skip template/. Files
-# there are sources, not outputs — a `.jinja` file that ends in a conditional block must NOT end
-# in a newline, or the rendered file gets a blank last line (bit us twice). What template/
+# Two differences, each with its reason. The whitespace and end-of-file FIXERS skip template/.
+# Files there are sources, not outputs — a `.jinja` file that ends in a conditional block must NOT
+# end in a newline, or the rendered file gets a blank last line (bit us twice). What template/
 # renders into is checked where it matters: the self-test runs the GENERATED project's own
 # pre-commit hooks on every generation. The secret hooks see everything, template/ included.
+#
+# And the end-of-file fixer skips .claude/: it opens every file for WRITING, even one it will
+# not change, and the agent's OS sandbox refuses a write-open under .claude/ (ADR 0004) — so
+# `make check` failed inside it on files nobody touched. The rule it enforces still holds
+# there: tests/test_repo_policy.py reads every tracked .claude/ file, and read-only.
 #
 # Every `rev:` is a commit SHA with its tag beside it; Dependabot's pre-commit ecosystem
 # proposes bumps (.github/dependabot.yml).
@@ -26,7 +31,7 @@ repos:
       - id: trailing-whitespace
         exclude: '(\.md$|^template/)'
       - id: end-of-file-fixer
-        exclude: '^template/'
+        exclude: '^(template|\.claude)/'
       - id: check-yaml
       - id: check-toml
       - id: check-json

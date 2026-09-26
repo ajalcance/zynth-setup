@@ -201,3 +201,53 @@ def test_every_label_dependabot_applies_is_provisioned():
     bootstrap = (ROOT / "scripts" / "bootstrap-repo.sh").read_text()
     provisioned = set(re.findall(r'^\s*"([a-z-]+)\|', bootstrap, re.MULTILINE))
     assert applied <= provisioned, f"never created by bootstrap-repo.sh: {applied - provisioned}"
+
+
+# The end-of-file fixer skips .claude/ as well as template/: it opens every file for writing,
+# and the agent's OS sandbox refuses that under .claude/ (ADR 0004). The rule it enforces is
+# held here instead, reading only.
+EOF_FIXER_SKIPS = ("template/", ".claude/")
+
+
+def tracked_files() -> list[str]:
+    out = subprocess.run(
+        ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout
+    return [f for f in out.split("\n") if f]
+
+
+def eof_fixer_exclude() -> re.Pattern[str]:
+    config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
+    for repo in config["repos"]:
+        for hook in repo["hooks"]:
+            if hook["id"] == "end-of-file-fixer":
+                return re.compile(hook.get("exclude", "(?!)"))
+    pytest.fail("no end-of-file-fixer hook — the rule below would be the only one left")
+
+
+def test_the_end_of_file_fixer_skips_nothing_beyond_its_two_reasons():
+    exclude = eof_fixer_exclude()
+    skipped = [f for f in tracked_files() if exclude.search(f)]
+    assert skipped, "the exclude matches nothing — this would pass over nothing"
+    widened = [f for f in skipped if not f.startswith(EOF_FIXER_SKIPS)]
+    assert not widened, f"the end-of-file fixer no longer checks: {widened[:10]}"
+
+
+def ends_as_the_fixer_leaves_it(data: bytes) -> bool:
+    """end-of-file-fixer's rule: empty, or exactly one newline at the end."""
+    return not data or (data.endswith(b"\n") and not data.endswith(b"\n\n"))
+
+
+@pytest.mark.parametrize(
+    "data,ok",
+    [(b"", True), (b"x\n", True), (b"x", False), (b"x\n\n", False), (b"\n", True)],
+)
+def test_the_rule_is_the_fixers(data, ok):
+    assert ends_as_the_fixer_leaves_it(data) is ok
+
+
+def test_every_agent_policy_file_ends_in_exactly_one_newline():
+    files = [f for f in tracked_files() if f.startswith(".claude/")]
+    assert files, "no tracked .claude/ files — this would pass over nothing"
+    bad = [f for f in files if not ends_as_the_fixer_leaves_it((ROOT / f).read_bytes())]
+    assert not bad, f"not ending in exactly one newline: {bad}"
