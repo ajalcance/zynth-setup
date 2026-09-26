@@ -87,6 +87,31 @@ def test_editing_a_workflow_also_counts_as_a_guard_file(tmp_path):
     assert result.returncode != 0, "a workflow edit must be treated as a guard-file change"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/settings.json",
+        ".claude/hooks/block_dangerous_bash.py",
+        ".claude/approved-scope.json",
+        "tests/guards/test_meta_guard.py",
+        "tests/guards/test_new_guard.py",
+        "Makefile",
+    ],
+)
+def test_the_agents_policy_the_fault_tests_and_the_gates_are_guard_files(tmp_path, path):
+    """Backlog T8: none of these needed the owner's label, so an agent could widen its own
+    permissions, delete the test that proves a guard fails, or drop a gate from `make check`.
+    """
+    guard = _repo(tmp_path)
+    write(tmp_path / path, "changed\n")
+    git_commit(tmp_path, f"chore: touch {path}")
+    blocked = run_guard(guard, "--base", BASE, "--allow-missing-tests")
+    assert blocked.returncode != 0, f"{path} must need the owner's guardrail-change label"
+    assert path in blocked.stdout
+    allowed = run_guard(guard, "--base", BASE, "--allow-missing-tests", "--allow-guardrail-change")
+    assert allowed.returncode == 0, "the owner's label must let it through"
+
+
 def test_migration_change_needs_sensitive_approval(tmp_path):
     """A migration rewrites stored data — its blast radius outlives the PR."""
     guard = _repo(tmp_path)

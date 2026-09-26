@@ -9,6 +9,18 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### The agent's policy, the fault tests and the Makefile now need the owner's label
+
+- The meta-guard did not count `.claude/` (the agent's own permission policy, hooks and scope
+  file), `tests/guards/` (the fault tests that prove each guard can fail) or the `Makefile`
+  (where every gate is defined) as guard files. An agent could widen its own permissions,
+  delete the test that fails, or drop a gate from `make check`, and the pull request needed no
+  owner label. All three now do, and CODEOWNERS lists `.claude/` and `Makefile`.
+- The meta-guard's own comment claimed `tests/guards/test_meta_guard.py` was already gated; it
+  was not. It is now.
+- **On update:** a PR that adds a guard test now needs `guardrail-change`, as a PR that adds a
+  guard always did.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does

@@ -45,6 +45,11 @@ CONSEQUENTIAL = (
     "experience/registry.toml",
     "Makefile",
     "ruff-harness.toml",
+    # The agent's own permission policy. Absent from this population until 2026-09-26, and so
+    # absent from the meta-guard too: an agent could widen its own authority with no label.
+    ".claude/settings.json",
+    ".claude/hooks/block_dangerous_bash.py",
+    ".claude/approved-scope.json",
     "backend/migrations/versions/0001_initial.py",
     "deploy/docker-compose.yml",
     "deploy/verify.sh",
@@ -89,6 +94,29 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+SETTINGS = Path(REPO_ROOT) / ".claude" / "settings.json"
+
+
+def _statically_asked(path: str) -> bool:
+    """Prompted by a static rule in .claude/settings.json rather than by the scope hook.
+
+    `.claude/` is deliberately outside CORE: no scope may ever waive it, so its prompt comes from
+    static `ask`/`deny` rules that do not depend on the agent's own code being correct.
+    """
+    import fnmatch
+    import json
+
+    permissions = json.loads(SETTINGS.read_text())["permissions"]
+    for rule in permissions.get("ask", []) + permissions.get("deny", []):
+        if not rule.startswith("Edit(./"):
+            continue
+        pattern = rule[len("Edit(./") : -1]
+        base = pattern[:-3] if pattern.endswith("/**") else None
+        if fnmatch.fnmatch(path, pattern) or (base and path.startswith(base + "/")):
+            return True
+    return False
+
+
 @pytest.mark.parametrize("path", CONSEQUENTIAL)
 def test_every_consequential_path_is_known_to_at_least_one_list(path):
     """A path in NEITHER list changes with nobody in the loop at either point."""
@@ -111,9 +139,10 @@ def test_a_path_the_meta_guard_gates_also_raises_a_prompt(path):
     if not gated:
         pytest.skip(f"{path} is not gated by the meta-guard")
     core = _scope_tuple("CORE")
-    assert _covered_by_scope_list(path, core), (
+    assert _covered_by_scope_list(path, core) or _statically_asked(path), (
         f"{path} needs the owner's label on a pull request but raises no keystroke prompt. "
-        f"Add it to CORE in .claude/hooks/approved_scope.py."
+        f"Add it to CORE in .claude/hooks/approved_scope.py (or, for .claude/ itself, a static "
+        f"ask rule in .claude/settings.json)."
     )
 
 
