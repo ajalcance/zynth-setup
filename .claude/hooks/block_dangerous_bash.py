@@ -30,6 +30,13 @@ line is now read as the shell reads it (`_shell.py`, shared with the confinement
 rule looks at one simple command's own words. The raw-line regexes survive only as the
 fallback for a line the parser cannot read — there, over-refusing is the safe direction.
 
+**No-prompt mode.** With `CLAUDE_HOOKS_NEVER_ASK` set in the settings' `env`, nothing here
+asks: what would ask is refused, and the owner runs it from their own terminal. A prompt is a
+control only while someone watches, and a project that runs its agent unattended inside an OS
+sandbox gets its approvals at the pull request instead. Off by default. The switch only ever
+tightens: every value but an empty one or 0/false/no/off turns it on, and unsetting it returns
+the prompts, never a pass.
+
 Contract: reads the PreToolUse JSON envelope on stdin. Exit 2 blocks the tool
 call and feeds stderr back to the model; a JSON `ask` on stdout makes Claude Code prompt even
 where a static rule allows; exit 0 alone allows. Fails **open** on an internal error (a broken
@@ -444,7 +451,19 @@ def block(reason: str) -> int:
     return 2
 
 
+NEVER_ASK = "CLAUDE_HOOKS_NEVER_ASK"
+
+
+def never_ask() -> bool:
+    """No-prompt mode: set, and not one of the spellings of "off"."""
+    return os.environ.get(NEVER_ASK, "").strip().lower() not in ("", "0", "false", "no", "off")
+
+
 def ask(reason: str) -> int:
+    if never_ask():
+        return block(
+            reason + f" In no-prompt mode ({NEVER_ASK}) what this hook would ask about is refused."
+        )
     json.dump(
         {
             "hookSpecificOutput": {
