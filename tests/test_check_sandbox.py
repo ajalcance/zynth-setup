@@ -76,3 +76,24 @@ def test_the_write_probes_leave_nothing_behind_on_either_side_of_the_sandbox():
     for probe in written:
         check_sandbox.run(probe)
         assert not probe.cleanup.exists(), f"{probe.name}: left {probe.cleanup}"
+
+
+def test_a_walled_folder_is_probed_by_listing_it():
+    # Seatbelt lets a lookup of a walled folder through and refuses only the listing: a folder
+    # probed with stat() reads "allowed" and fails a sandbox that holds.
+    by_name = {p.name: p for p in check_sandbox.probes()}
+    for wall in check_sandbox.HOME_WALL_FOLDERS:
+        probe = by_name[f"list ~/{wall}"]
+        assert probe.expect == DENIED and "listdir(" in probe.body, wall
+
+
+def test_the_home_walls_are_probed():
+    names = {p.name for p in check_sandbox.probes() if p.expect == DENIED}
+    for wall in ("Desktop", "Downloads", "Documents"):
+        assert f"list ~/{wall}" in names, f"~/{wall} is walled but never probed"
+
+
+def test_the_project_inside_the_walled_documents_is_a_control():
+    # ~/Documents is walled with this project allowed inside it; a control proves the exception.
+    controls = [p for p in check_sandbox.probes() if p.expect == ALLOWED]
+    assert any(repr(str(check_sandbox.ROOT)) in p.body and "stat(" in p.body for p in controls)
