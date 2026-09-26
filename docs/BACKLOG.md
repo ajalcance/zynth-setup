@@ -21,6 +21,14 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T17 | `docker/setup-buildx-action` and `docker/setup-qemu-action` target Node 20, which GitHub has deprecated and now forces to Node 24. Bump both where the template ships them (`release.yml`) and here. | A CI annotation on the v3.2.1 run |
 | T18 | The confinement hook reads a `sed -i` script as a file path: `sed -i '' 's/a$/b/' f` is refused because the script holds a `$`. Skip the script argument (the first non-option word, or each `-e` value). | Preparing the v3.3.0 release |
 
+## Found running the gates inside the agent's OS sandbox (2026-09-26, ADR 0004)
+
+| ID | Adopters' weakness | Found by |
+|---|---|---|
+| T19 | `scripts/secret_scan.py` builds its HTTPS-only opener without a `ProxyHandler`, so it ignores `HTTPS_PROXY`. Behind any proxy (a corporate one, or Claude Code's sandbox) it cannot download gitleaks, and the secret scan refuses to run. With the handler added, 3 of 9 downloads through the sandbox proxy came back short, and `IncompleteRead` escaped as a traceback instead of a REFUSED message. Honour the proxy, catch every download error, retry. The checksum still decides. | `make verify` inside the sandbox: the secret-scan guard tests use a fresh cache |
+| T20 | The shipped policy's `Read(./**/*.pem)` becomes an OS rule under Claude Code's sandbox. It makes the CA bundle pip vendors in `backend/.venv` unreadable, so pip cannot verify TLS inside the project. Any other in-project `*.pem` a tool reads is blocked too. Document the sandbox settings (`PIP_CERT`, `SSL_CERT_FILE`), or narrow the rule so it cannot match a venv's bundle. | pip in this repository's `.venv` |
+| T21 | The shipped `end-of-file-fixer` opens every file for writing, `.claude/*` included. Under a sandbox that protects `.claude/`, `make check` fails on files nobody changed. The same holds for any fixer that writes by default. | `make check` inside the sandbox |
+
 ## Carried over
 
 | ID | Item |

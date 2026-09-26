@@ -13,16 +13,18 @@
 #   make venv     a root .venv with the pinned tools (requirements-selftest.txt)
 #   make verify   generate full, minimal and hooks-off from the working tree; run their gates
 #                 (slow; required before committing any change under template/)
+#   make sandbox-verify  prove the agent's OS sandbox holds, from child processes (ADR 0004;
+#                 run inside the agent's session — it fails outside the sandbox by design)
 PY ?= .venv/bin/python
 ZIZMOR ?= .venv/bin/zizmor
 CI_TOOLS ?= $(HOME)/.cache/ci-tools
 # The root harness. template/ has its own gates and is proved by generating from it.
 HARNESS := scripts tests
 
-.PHONY: help check hooks hooks-install lint policy test venv verify
+.PHONY: help check hooks hooks-install lint policy test venv verify sandbox-verify
 
 help:
-	@echo "Targets: check | hooks | hooks-install | lint | policy | test | venv | verify"
+	@echo "Targets: check | hooks | hooks-install | lint | policy | test | venv | verify | sandbox-verify"
 
 check: hooks lint policy test
 
@@ -59,3 +61,7 @@ test:
 
 verify:
 	scripts/verify-generations.sh $(VARIANTS)
+
+# Not part of `check`: CI runs unsandboxed, where every probe is rightly let through.
+sandbox-verify:
+	$(PY) scripts/check_sandbox.py
