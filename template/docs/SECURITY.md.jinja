@@ -11,7 +11,9 @@ _This is the engineering security posture. For **reporting a vulnerability**, se
   staging area) → `scripts/secret_scan.py` in CI, which scans the COMMITS in the pull request
   or push and first plants a fake token in every source tree to prove it can see → the
   `detect-private-key` hook. The CI scan is `make policy`, not the hook: a staged scan on a
-  clean checkout inspects nothing and passes, which is what this replaced.
+  clean checkout inspects nothing and passes, which is what this replaced. It downloads its
+  pinned gitleaks through `HTTPS_PROXY` when one is set, resumes a transfer cut short, and exits 2
+  ("could not scan") on any failure, never 1 ("secret found").
 
 ## Fail closed
 

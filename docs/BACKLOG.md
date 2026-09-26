@@ -40,3 +40,4 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T13 | pre-commit pinned at one version across the template's manifests, and a guard that compares every manifest. | v3.3.0 |
 | T7 | Both Bash hooks share a quote-aware parser (`_shell.py`): no more "unbalanced quotes" on ordinary reads; `cd` applied in order; substitutions, wrappers and `sh -c` looked inside. | v3.3.0 |
 | T11 | Each dangerous-command rule reads one command's own words. Also caught two missed blocks: `git commit -n`/`-an` and `rm --recursive --force`. | v3.3.0 |
+| T19 | The secret scan downloads gitleaks through `HTTPS_PROXY`, resumes a transfer cut short, and exits 2 (never 1, the leak code) on any crash. | next release |
