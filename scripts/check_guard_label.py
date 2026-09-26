@@ -8,8 +8,9 @@ product IS the guards, so the rule covers two populations:
   listed in ROOT_GUARDS below.
 * **What judges every adopter** — any file under template/ that, once rendered, the template's
   own meta-guard would call a guard file. Its GUARD_FILE_RE is imported, not copied, so the two
-  definitions cannot drift. Three paths it does not cover are added here (TEMPLATE_EXTRA):
-  the agent's own policy, the fault tests and the gate definitions.
+  definitions cannot drift. (Until 2026-09-26 this file added three paths the template's
+  definition missed — `.claude/`, `tests/guards/`, `Makefile`. Backlog T8 put them in the
+  template's own GUARD_FILE_RE, where adopters get them too, and the copy here was removed.)
 
 The label is applied by the owner. The agent's session hook refuses applying it
 (.claude/hooks/block_dangerous_bash.py), and CI checks the label is present — not who applied
@@ -47,13 +48,6 @@ ROOT_GUARDS = re.compile(
     r"|^copier\.yml$"
 )
 
-# Guards in a generated project that the template's GUARD_FILE_RE does not name.
-TEMPLATE_EXTRA = re.compile(
-    r"^\.claude/"  # the agent's own permission policy and hooks
-    r"|^tests/guards/"  # a weakened fault test is a weakened guard
-    r"|^Makefile$"  # where every gate is defined
-)
-
 CONDITIONAL = re.compile(r"\{%\s*if[^%]*%\}(.*?)\{%\s*endif\s*%\}")
 
 
@@ -79,7 +73,7 @@ def guard_files(changed: list[str]) -> list[str]:
     for name in changed:
         if name.startswith("template/"):
             inner = rendered(name[len("template/") :])
-            if template_re.match(inner) or TEMPLATE_EXTRA.match(inner):
+            if template_re.match(inner):
                 guards.append(name)
         elif ROOT_GUARDS.match(name):
             guards.append(name)

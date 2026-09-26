@@ -13,7 +13,6 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T3 | No workflow invariant forbids a step `env:` override of a default `GITHUB_*`/`RUNNER_*` variable. GitHub silently ignores it. | The self-test's policy step, broken on the first PR |
 | T4 | Nothing flags `.claude/settings.local.json` growing or picking up broad allows (`git push *`, `Bash(*)`). An audit point, or a hook warning. | This repo's local file: 199 allows |
 | T5 | A gate keyed to "the previous release" changes meaning at tag time; the release procedure should re-verify after tagging. | The copier-update gate, broken by the v3.1.0 tag |
-| T8 | The meta-guard's `GUARD_FILE_RE` does not name `.claude/` (the agent's own policy and hooks), `tests/guards/` or the `Makefile`: an agent can weaken any of them with no owner label. | Writing `scripts/check_guard_label.py` |
 | T9 | The confinement hook blocks writes to the agent's session scratch directory, which Claude Code provides outside the project. Consider honouring `permissions.additionalDirectories`. | This repo's session |
 | T10 | The shipped ruleset's `pull_request` rule sets `require_extra_approval_for_unattributed_changes`, which GitHub's REST reference does not document: either the bootstrap is refused or the setting is silently ignored. Verify against the live API; keep only documented parameters, with a test. | Writing this repo's ruleset |
 | T15 | Dependabot security updates ignore `cooldown` (GitHub's design), so a security PR can propose a release published hours earlier — #21 proposed vitest 5.0.2, published that morning. Adopters' Dependabot does the same. Document it; the owner-consent flag (T12) is what makes such a PR get read. | Dependabot PR #21 |
@@ -40,3 +39,4 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T13 | pre-commit pinned at one version across the template's manifests, and a guard that compares every manifest. | v3.3.0 |
 | T7 | Both Bash hooks share a quote-aware parser (`_shell.py`): no more "unbalanced quotes" on ordinary reads; `cd` applied in order; substitutions, wrappers and `sh -c` looked inside. | v3.3.0 |
 | T11 | Each dangerous-command rule reads one command's own words. Also caught two missed blocks: `git commit -n`/`-an` and `rm --recursive --force`. | v3.3.0 |
+| T8 | The meta-guard gates `.claude/`, `tests/guards/` and `Makefile`; CODEOWNERS and the protected-path population cover them; the population now includes the agent's own policy. | next release |

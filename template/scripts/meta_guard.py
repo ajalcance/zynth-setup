@@ -104,6 +104,17 @@ GUARD_FILE_RE = re.compile(
     # waiver rests on, and it could be removed with no special review — so "a waiver needs
     # owner approval" was policy, not enforcement.
     r"|^\.github/dependabot\.yml$"
+    # The agent's own permission policy, hooks and scope file. Each asks locally before the
+    # agent may change it — but a local prompt is the agent's session and the owner's click,
+    # not the owner's review of the pull request. A change here widens what the agent may do.
+    r"|^\.claude/"
+    # The fault tests that prove each guard can still fail. Weakening one is weakening the
+    # guard: delete the test that fails and the guard it covered stops being checked. The
+    # SELF_REFERENTIAL comment above has always said test_meta_guard.py was matched here; it
+    # was not, and nothing under tests/guards/ was.
+    r"|^tests/guards/"
+    # Where every gate is defined. `make check` dropping a target is a gate that stops running.
+    r"|^Makefile$"
 )
 
 
