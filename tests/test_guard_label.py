@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
 import subprocess
@@ -72,7 +73,10 @@ def check(repo: Path, labelled: bool):
     "path",
     [
         ".github/workflows/template-test.yml",
-        ".claude/settings.json",
+        # The agent's OS sandbox refuses a planted settings.json or hooks file anywhere, so the
+        # end-to-end case uses another file of the agent's policy; the two it cannot plant are
+        # held against the rule itself, below.
+        ".claude/approved-scope.json",
         "scripts/check-jinja-syntax.sh",
         "tests/test_repo_policy.py",
         "Makefile",
@@ -95,6 +99,18 @@ def test_a_guard_changed_without_the_label_fails(repo, path):
     result = check(repo, labelled=False)
     assert result.returncode == 1, result.stdout
     assert path in result.stdout
+
+
+@pytest.mark.parametrize(
+    "path",
+    [".claude/settings.json", ".claude/settings.local.json", ".claude/hooks/confine_to_project.py"],
+)
+def test_the_agents_settings_and_hooks_are_guards(path):
+    """Held against the rule itself: the sandbox will not let a test plant these files."""
+    spec = importlib.util.spec_from_file_location("check_guard_label", CHECK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.ROOT_GUARDS.search(path), f"{path} would change without the owner's label"
 
 
 def test_the_owners_label_lets_it_through(repo):
