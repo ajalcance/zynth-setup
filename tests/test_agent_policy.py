@@ -24,7 +24,10 @@ HOOKS = ROOT / ".claude" / "hooks"
 TEMPLATE_HOOKS = ROOT / "template" / ".claude" / "{% if include_claude_hooks %}hooks{% endif %}"
 WRITE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 TOOLS = {"Read", "Glob", "Grep", "Edit", "Write", "MultiEdit", "NotebookEdit", "Bash"}
-RULE = re.compile(r"^(Bash|Read|Edit|Write|MultiEdit|NotebookEdit)\(.+\)$")
+# A rule is `Tool(pattern)`, or a whole tool by name: `WebFetch`, or an MCP server `mcp__name`.
+RULE = re.compile(
+    r"^(Bash|Read|Edit|Write|MultiEdit|NotebookEdit)\(.+\)$|^(WebFetch|RemoteTrigger)$|^mcp__[\w-]+$"
+)
 NEVER_ASK = "CLAUDE_HOOKS_NEVER_ASK"
 
 # What judges the agent HERE, and used to ask. It no longer does, so each path must be one a
@@ -79,6 +82,25 @@ OWNER_ONLY = (
     "gh release list",
     "gh repo view",
     "sudo -s",
+)
+
+# Tools that act OUTSIDE the OS sandbox, each a way past the walls (ADR 0005): the Terminal panel
+# runs in the owner's own shell; the browser, WebFetch and Chrome reach any host, not the
+# allowlist; scheduled tasks and the session tools run later or elsewhere, or change the
+# permission mode; the rest change app settings, the host, or merge by themselves.
+OUTSIDE_THE_SANDBOX = (
+    "WebFetch",
+    "RemoteTrigger",
+    "mcp__terminal",
+    "mcp__Claude_Browser",
+    "mcp__claude-in-chrome",
+    "mcp__computer-use",
+    "mcp__scheduled-tasks",
+    "mcp__ccd_session_mgmt",
+    "mcp__ccd_settings",
+    "mcp__ccd_host",
+    "mcp__ccd_pr__set_auto_merge",
+    "mcp__ccd_session__move_to_cloud",
 )
 
 # Everyday work. None of it may be refused, or the model breaks the work it is meant to allow.
@@ -183,6 +205,22 @@ def test_secret_files_are_denied_at_any_depth():
     deny = permissions()["deny"]
     for name in (".env", ".env.local", ".env.production"):
         assert f"Read({name})" in deny, name
+
+
+@pytest.mark.parametrize("tool", OUTSIDE_THE_SANDBOX)
+def test_a_tool_that_acts_outside_the_sandbox_is_denied(tool):
+    """The sandbox wraps shell commands. These tools do not run in one."""
+    assert tool in permissions()["deny"], f"{tool} runs outside the sandbox and is allowed"
+
+
+def test_the_file_tools_are_confined_to_the_project():
+    """Edit/Write run in Claude Code's process, outside any sandbox; the hook is their wall."""
+    settings = json.loads(SETTINGS.read_text())
+    confined = set()
+    for entry in settings["hooks"]["PreToolUse"]:
+        if any("confine_to_project.py" in h["command"] for h in entry["hooks"]):
+            confined |= set(entry["matcher"].split("|"))
+    assert set(WRITE_TOOLS) <= confined, f"unconfined: {sorted(set(WRITE_TOOLS) - confined)}"
 
 
 def test_no_prompt_mode_holds_only_with_what_makes_it_safe():
