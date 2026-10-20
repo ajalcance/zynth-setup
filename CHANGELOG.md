@@ -9,6 +9,17 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### The file tools are confined to the project
+
+- **`Edit`, `Write`, `MultiEdit` and `NotebookEdit` could write anywhere on the machine.** They
+  run in Claude Code's own process, outside any OS sandbox, and the only thing between them and
+  `~/.zshrc` or a login item was a prompt, which bypass-permissions mode answers by itself.
+  `confine_to_project.py` is now registered for them too: a path outside the project is
+  refused, a link out of the project is followed and refused, and the only exceptions are
+  Claude Code's own state for the project (its memory, its plans, its temporary folder). Inside
+  the project, `.claude/` included, the permission rules still decide. **On update:** the hook
+  and `.claude/settings.json` change together; nothing else for you to do.
+
 ### An opt-in switch for running the agent without prompts
 
 - The Claude Code hooks read **`CLAUDE_HOOKS_NEVER_ASK`** from the settings' `env`. With it set,

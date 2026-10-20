@@ -33,6 +33,16 @@ Three design decisions worth keeping:
   weaker policy without writing a byte of it. A change there goes through the Edit tool,
   where the permission system can see it.
 
+**The file tools are confined too.** `Edit`, `Write`, `MultiEdit` and `NotebookEdit` run in Claude
+Code's own process, outside any OS sandbox, and the only thing between them and `~/.zshrc` was
+Claude Code's working-folder rule, which is a prompt. In bypass-permissions mode a prompt is
+answered automatically, so an edit to a shell profile or a login item would run code outside
+every sandbox the next time a terminal opens. Registered for the file tools, this refuses a
+path outside the project, except the three places Claude Code itself keeps state for this
+project: its memory (`~/.claude/projects/<this project>/`), its plans (`~/.claude/plans/`) and
+its temporary folder (`$CLAUDE_CODE_TMPDIR`, `$CLAUDE_TMPDIR` or `$TMPDIR`). Anything inside the
+project, `.claude/` included, is left to the permission rules.
+
 Contract: reads the PreToolUse JSON envelope on stdin. Exit 2 blocks and feeds stderr back to
 the model; exit 0 allows. Fails **closed** on a command it cannot parse — unlike its siblings,
 because the thing it prevents is unrecoverable.
@@ -42,6 +52,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -79,6 +90,9 @@ DEVICES = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "/dev/zero", "
 # `git` subcommands that overwrite working-tree files from another ref.
 GIT_OVERWRITES = {"checkout", "restore"}
 GIT_GLOBAL_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace"}
+# The tools that write a file directly, in Claude Code's process rather than a shell.
+FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+TEMP_VARIABLES = ("CLAUDE_CODE_TMPDIR", "CLAUDE_TMPDIR", "TMPDIR")
 
 
 def project_root() -> Path:
@@ -223,13 +237,47 @@ def decide(command: str, root: Path) -> str | None:
     return None
 
 
+def file_tool_roots(root: Path) -> list[Path]:
+    """Where a file tool may write: the project, and Claude Code's own state for it."""
+    claude = Path.home() / ".claude"
+    # Claude Code names a project's folder after its path, every other character a dash.
+    roots = [root, claude / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(root)), claude / "plans"]
+    roots += [Path(os.environ[v]) for v in TEMP_VARIABLES if os.environ.get(v, "").strip()]
+    return [Path(os.path.normpath(str(r))).resolve(strict=False) for r in roots]
+
+
+def decide_file(target: str, root: Path, cwd: Path) -> str | None:
+    """The reason a file tool may not write `target`, or None to allow it."""
+    resolved = resolve(target, cwd)
+    if any(inside(resolved, allowed) for allowed in file_tool_roots(root)):
+        return None
+    return (
+        f"a file tool may not write outside the project:\n  {target} → {resolved}\n"
+        f"The project is {root}. Outside it, only Claude Code's own memory, plans and temporary "
+        "folders for this project are writable. A file there changes this machine, not the "
+        "project; the owner makes such changes by hand."
+    )
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return 0  # not a payload this hook understands; another hook will see it too
 
-    command = (payload.get("tool_input") or {}).get("command")
+    tool_input = payload.get("tool_input") or {}
+    if payload.get("tool_name") in FILE_TOOLS:
+        target = tool_input.get("file_path") or tool_input.get("notebook_path")
+        if not isinstance(target, str) or not target.strip():
+            return 0  # the tool itself refuses a call with no path
+        root = project_root()
+        reason = decide_file(target, root, Path(payload.get("cwd") or root))
+        if reason:
+            sys.stderr.write("BLOCKED by .claude/hooks/confine_to_project.py — " + reason + "\n")
+            return 2
+        return 0
+
+    command = tool_input.get("command")
     if not isinstance(command, str) or not command.strip():
         return 0
 
