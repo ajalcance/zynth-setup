@@ -78,7 +78,20 @@
       "Bash(gh api *--field*)",
       "Bash(gh api *--raw-field*)",
       "Bash(gh api *--input*)",
-      "Bash(gh api *labels*)"
+      "Bash(gh api *labels*)",
+
+      "WebFetch",
+      "RemoteTrigger",
+      "mcp__terminal",
+      "mcp__Claude_Browser",
+      "mcp__claude-in-chrome",
+      "mcp__computer-use",
+      "mcp__scheduled-tasks",
+      "mcp__ccd_session_mgmt",
+      "mcp__ccd_settings",
+      "mcp__ccd_host",
+      "mcp__ccd_pr__set_auto_merge",
+      "mcp__ccd_session__move_to_cloud"
     ]
   },
   "hooks": {
@@ -102,6 +115,10 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_secret_write.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/confine_to_project.py\""
           }
         ]
       }

@@ -80,3 +80,35 @@ the hooks, managed settings, and CI with the branch rules.
 - **Applying it is the owner's act.** The agent cannot write its own settings. The owner
   copies the file into place, restarts the session, and chooses Bypass permissions; the agent
   then runs the checks both ways.
+
+## Amendment (2026-10-21): the two gaps that bypass mode opens, and where the policy lives
+
+Before the owner selected Bypass permissions, two gaps were found by asking what the sandbox
+does not wrap. Neither had been tested under Bypass; both are now closed, by tests.
+
+1. **The file tools run in Claude Code's process, outside any OS sandbox.** Edit and Write could
+   change `~/.zshrc` or a LaunchAgent, which runs code outside every sandbox the next time a
+   terminal opens. The confinement hook (template T24) now judges their paths and refuses
+   anything outside the project, except Claude Code's own memory, plans and temporary folders.
+2. **Some tools act outside the sandbox altogether.** The Terminal panel runs in the owner's own
+   shell, the browser, `WebFetch` and Chrome reach any host rather than the allowlist, and
+   scheduled tasks and the session and settings tools act later, elsewhere, or on the policy
+   itself. `settings.json` now denies each by name; `tests/test_agent_policy.py` fails if one
+   comes off.
+
+**The policy has a layer the repository cannot see: managed settings.** Three root-owned drop-in
+files under `/Library/Application Support/ClaudeCode/managed-settings.d/` apply to every
+project on the machine, and nothing a project can edit overrides them:
+
+- `40-sandbox-floor.json`: the sandbox is on, must start, and allows no unsandboxed command;
+  the Terminal tool, the permission-mode tool and the app-settings tool are denied.
+- `50-zynth-agent-authority.json`: no project's agent may edit any `.claude/` settings or hooks,
+  and **`sandbox.network.strictAllowlist`**.
+- `45-zynth-setup-network.json`: this repository's seven hosts.
+
+`strictAllowlist` means the project's own network allowlist is ignored: only hosts named in
+managed settings are reachable. It was found the hard way. After it was set, every host
+(`pypi.org`, `api.github.com`) was refused and no setting in the repository explained why.
+A host this project needs is added to the managed drop-in, by the owner. Two things are
+observed rather than explained: the tool-cache write paths from the local settings were no
+longer writable, and a standalone `gh` ran inside the sandbox instead of outside it.

@@ -79,6 +79,13 @@ If two disagree, the higher one wins and the lower one is a bug — fix it in th
 - **Refused, because they are irreversible or out of scope:** force pushes, deleting remote
   refs, `reset --hard`, `git clean`, `--no-verify`, `ssh` and `docker`.
 - **Refused, because it is the agent's own policy:** all of `.claude/`.
+- **Refused, because the tool runs outside the OS sandbox:** `WebFetch`, the Terminal panel,
+  the built-in browser, Chrome, computer use, scheduled tasks, and the tools that message other
+  sessions or change the permission mode or the app's settings. The sandbox wraps shell
+  commands only; each of these is a way past its walls.
+- **The file tools may not write outside the project** (`confine_to_project.py`, registered for
+  `Edit`, `Write`, `MultiEdit` and `NotebookEdit`), except Claude Code's own memory, plans and
+  temporary folders.
 - **Everything else runs.** A change to what judges the agent here (`.github/`, `scripts/`,
   `tests/`, the `Makefile`, the pins) or what judges adopters (`template/`) is approved at the
   pull request, by the owner's `guardrail-change` label.
@@ -99,6 +106,9 @@ design. Habits the sandbox requires:
   `git switch --no-track -c`. A refused write leaves a half-done switch, so check
   `git branch --show-current` before committing.
 - **Commit messages come from a file** in `.copier-test/`, passed with `git commit -F`.
+- **The network allowlist is the owner's, in managed settings** (`strictAllowlist`): the hosts
+  in `.claude/settings.local.json` are ignored. A host a real task needs is added to the managed
+  drop-in by the owner, never by the agent.
 - **When a check fails on a sandbox refusal, fix the check.** Never ask for a wider sandbox to
   get past it. A host or path is added only when real work needs it, by the owner.
 

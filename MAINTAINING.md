@@ -205,6 +205,10 @@ Everything runs in **your** terminal: the agent is denied its own settings file.
 - **Wall off the rest of the home folder:** `bash scripts/sandbox-home-walls.sh`. The kit walls
   off only the other projects and the credential stores. The script backs the file up first,
   validates the result, and prints how many walls it added.
+- **Network hosts live in managed settings, not here** (`strictAllowlist`, ADR 0005): add one
+  with a root-owned drop-in under `/Library/Application Support/ClaudeCode/managed-settings.d/`.
+  This repository's seven are in `45-zynth-setup-network.json`. If every host is refused and the
+  local file looks right, look there first, and at `50-zynth-agent-authority.json`.
 - **Managed settings, once per Mac** (`/Library/Application Support/ClaudeCode/`): deny every
   project's agent its own settings, the user's settings and the managed folder itself.
 - **Tool settings** (`env` in the same file), for tools that cannot reach the macOS trust

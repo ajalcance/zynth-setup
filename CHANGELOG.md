@@ -9,6 +9,14 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### Template repository (no change for adopters)
+
+- Closing what bypass mode opens (ADR 0005, amended): `settings.json` denies the tools that act
+  outside the OS sandbox (the Terminal panel, the browser, `WebFetch`, Chrome, computer use,
+  scheduled tasks, the session and settings tools) and registers the confinement hook for the
+  file tools. `tests/test_agent_policy.py` holds both. A guard-label test that planted a file the
+  sandbox refuses now holds those paths against the rule instead.
+
 ### The file tools are confined to the project
 
 - **`Edit`, `Write`, `MultiEdit` and `NotebookEdit` could write anywhere on the machine.** They
