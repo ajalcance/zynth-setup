@@ -30,6 +30,7 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T21 | The shipped `end-of-file-fixer` opens every file for writing, `.claude/*` included. Under a sandbox that protects `.claude/`, `make check` fails on files nobody changed. The same holds for any fixer that writes by default. | `make check` inside the sandbox |
 | T22 | The no-prompt model (ADR 0005 here) is not offered to adopters. It is safe only with an OS sandbox, so the template keeps its ask model. The hooks' switch shipped (template ADR-0007); what is left is a documented opt-in: the settings shape, the deny list, the pinning test, and the sandbox it requires. | Adopting the owner's No-Prompt Agent Permissions model |
 | T23 | The dangerous-command hook refuses a READ of `core.hooksPath` (`git config --get core.hooksPath`) as if it changed it. Only a write disables the hooks. | Checking why this clone had no commit hook |
+| T24 | The shipped hooks confine the shell but not the file tools: `Edit`/`Write` could write `~/.zshrc` or a LaunchAgent, and in bypass mode nothing asked. Shipped: `confine_to_project.py` is registered for the file tools. | next release |
 
 ## Carried over
 

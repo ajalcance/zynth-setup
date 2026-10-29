@@ -13,6 +13,7 @@ test suite as a costume.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -340,3 +341,93 @@ def test_without_its_parser_it_refuses_rather_than_passes(tmp_path):
         env={"PATH": "/usr/bin:/bin", "HOME": str(Path.home()), "CLAUDE_PROJECT_DIR": str(PROJECT)},
     )
     assert result.returncode == 2 and "could not be imported" in result.stderr
+
+
+# --- The file tools ---------------------------------------------------------------------
+#
+# Edit/Write run in Claude Code's process, outside any OS sandbox. The only thing between them
+# and ~/.zshrc was a prompt, and in bypass-permissions mode a prompt answers itself. Registered
+# for the file tools, the hook refuses a path outside the project and Claude Code's own state.
+
+FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+SLUG = re.sub(r"[^A-Za-z0-9]", "-", str(PROJECT))
+
+
+def file_verdict(path: str | Path, tool: str = "Write", project: Path = PROJECT, **env) -> int:
+    key = "notebook_path" if tool == "NotebookEdit" else "file_path"
+    result = subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=json.dumps({"tool_name": tool, "tool_input": {key: str(path)}}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(Path.home()),
+            "CLAUDE_PROJECT_DIR": str(project),
+            **env,
+        },
+    )
+    return result.returncode
+
+
+@pytest.mark.parametrize("tool", FILE_TOOLS)
+@pytest.mark.parametrize(
+    "path",
+    [
+        Path.home() / ".zshrc",
+        Path.home() / "Library" / "LaunchAgents" / "com.example.plist",
+        OUTSIDE / "README.md",
+        "/etc/hosts",
+        PROJECT / ".." / "other project" / "x.py",
+        Path.home() / ".claude" / "projects" / "-some-other-project" / "memory" / "x.md",
+        Path.home() / ".claude" / "settings.json",
+    ],
+)
+def test_a_file_tool_may_not_write_outside_the_project(tool, path):
+    assert file_verdict(path, tool) == 2, f"{tool} may write {path}"
+
+
+@pytest.mark.parametrize("tool", FILE_TOOLS)
+@pytest.mark.parametrize(
+    "path",
+    [
+        PROJECT / "README.md",
+        PROJECT / "backend" / "app" / "main.py",
+        # Inside the project, .claude/ is the permission rules' to judge, not this hook's.
+        PROJECT / ".claude" / "notes.md",
+        Path.home() / ".claude" / "projects" / SLUG / "memory" / "MEMORY.md",
+        Path.home() / ".claude" / "plans" / "a-plan.md",
+    ],
+)
+def test_a_file_tool_may_write_the_project_and_claude_codes_own_state(tool, path):
+    assert file_verdict(path, tool) == 0, f"{tool} was refused {path}"
+
+
+@pytest.mark.parametrize("variable", ["CLAUDE_CODE_TMPDIR", "CLAUDE_TMPDIR", "TMPDIR"])
+def test_the_session_temporary_folder_is_writable(tmp_path, variable):
+    assert file_verdict(tmp_path / "scratch.md", **{variable: str(tmp_path)}) == 0
+
+
+def test_a_temporary_folder_is_writable_only_when_claude_code_names_it(tmp_path):
+    assert file_verdict(tmp_path / "scratch.md") == 2
+
+
+def test_a_link_out_of_the_project_is_followed_and_refused(tmp_path):
+    project = tmp_path / "project"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    (project / "profile").symlink_to(outside / "profile")
+    assert file_verdict(project / "profile", project=project) == 2
+    assert file_verdict(project / "real.py", project=project) == 0
+
+
+def test_the_hook_is_registered_for_every_file_tool():
+    settings = json.loads((REPO_ROOT / ".claude" / "settings.json").read_text())
+    covered = set()
+    for entry in settings["hooks"]["PreToolUse"]:
+        if any("confine_to_project.py" in h.get("command", "") for h in entry.get("hooks", [])):
+            covered |= set(entry.get("matcher", "").split("|"))
+    missing = set(FILE_TOOLS) - covered
+    assert not missing, f"the confinement hook never sees {sorted(missing)}"

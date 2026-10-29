@@ -184,3 +184,8 @@ nothing a hook would ask about is asked: `block_dangerous_bash.py` refuses it, a
 - `tests/guards/test_hooks_never_ask.py` runs the real hooks in both modes. It also fails if
   any hook that can emit `ask` does not read the switch, so a hook added later cannot put a
   prompt back.
+- **The file tools are confined too.** An OS sandbox wraps shell commands only; `Edit` and
+  `Write` run in Claude Code's own process. Without a prompt in front of them, nothing stopped
+  one from rewriting `~/.zshrc`, which runs outside every sandbox the next time a terminal
+  opens. `confine_to_project.py` now refuses a file tool's path outside the project, except
+  Claude Code's own memory, plans and temporary folders. This holds with or without the switch.
