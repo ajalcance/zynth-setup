@@ -9,6 +9,23 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+### Security — Next.js 16.4.2 in the generated frontend and docs-site
+
+- **Every project generated from 3.2.1 or 3.3.0 with the frontend or docs-site module pins
+  Next.js 16.3.5, which has three critical, unauthenticated remote-code-execution advisories**
+  (image optimization with SVG files, `use cache` functions returning typed arrays, and
+  `next/og`), plus cache poisoning, SSRF and denial-of-service advisories. All are fixed from
+  16.4.1. `next` and `eslint-config-next` move to **16.4.2**. A freshly generated project failed
+  its own `npm audit --omit=dev --audit-level=high` gate (3 production vulnerabilities, 1
+  critical); it passes now.
+- Lockfile-only updates close the rest: `sharp` 0.35.5 with libvips 1.3.4 (librsvg), `source-map-js`
+  1.2.2, `zod` 4.6.7, and in the frontend's dev tree `vite` 7.3.7 (kept on 7: the 8.x line is a
+  major bump, not a security fix), `vitest` and `@vitest/mocker` 4.1.12. A full `npm audit`, dev
+  dependencies included, reports 0 in both apps. Every version moved is at least 14 days old.
+- **On update:** `package.json` and `package-lock.json` change in both apps; run `npm ci`.
+  Nothing else changes. If you cannot update yet, a project on 3.3.0 or earlier should not serve
+  Next.js image optimization or `use cache` to untrusted users.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does
