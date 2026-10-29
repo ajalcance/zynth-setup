@@ -26,6 +26,15 @@ version must sort above the one before it.
   Nothing else changes. If you cannot update yet, a project on 3.3.0 or earlier should not serve
   Next.js image optimization or `use cache` to untrusted users.
 
+### Template repository (no change for adopters)
+
+- **`make advisories` audits what the template ships, with no CI in the loop.** It runs
+  `npm audit` on a copy of each template lockfile (dev dependencies included) and `pip-audit`
+  over every shipped Python pin, prints how many packages and pins it inspected, exits 1 on a
+  finding and 2 when it could not look. The release procedure now requires it clean on the commit
+  you tag. Its first run found `black` 26.5.1 pinned against GHSA-cg8m-r9f2-5wm2. Backlog T25;
+  `scripts/check_advisories.py`, 30 tests, 24 mutants killed.
+
 ## [3.3.0] — 2026-09-26 — no bot approves its own guard change; the hooks read commands as the shell does
 
 ### The agent's Bash hooks read a command line as the shell does

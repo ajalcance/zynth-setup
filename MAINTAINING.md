@@ -116,6 +116,28 @@ Copy only `package.json` and `package-lock.json` back, list every version the di
 (production entries especially), and run `make verify` plus the frontend and docs-site gates
 in the generated full project.
 
+## Check what the template ships for advisories
+
+```bash
+make advisories    # needs node on PATH, the network, and `make venv` (for pip-audit)
+```
+
+It audits each template lockfile (on a copy, dev dependencies included — npm cannot run in a
+`{% %}` directory) and each shipped Python pin file with the Jinja control lines dropped, so
+every optional module's pins are checked. It prints how many packages and pins it inspected and
+exits 1 on a finding, 2 when it could not look (no npm, a registry error, nothing to inspect);
+never read a 2 as "fine".
+
+**Run it weekly and before every release.** CI cannot be the only thing that tells you: in
+October 2026 the template shipped Next.js with three critical RCEs for three weeks because the
+one scheduled run that would have noticed could not run (Actions was locked for billing) and
+Dependabot's pull requests sat unread. It is not part of `make check` because it needs the
+network and the advisory databases move without a commit.
+
+Pins are audited directly (`--no-deps`): the template pins nothing else, and an unpinned
+transitive version is the adopter's install. A finding is fixed in its own change with the
+7-day rule above; a bump of a guard file needs the owner's `guardrail-change` label.
+
 ## Propagate template updates to existing projects
 
 Generated projects record their answers in `.copier-answers.yml`. In such a project:
@@ -193,7 +215,9 @@ The policy is ADR [0003](docs/decisions/0003-releases-and-versioning.md); this i
    | head -1`). Copier serves adopters the highest tag, so anything that sorts lower is a release
    nobody receives. Major when an update needs action beyond `copier update`; minor when an
    adopter will notice behaviour change; patch otherwise.
-2. **Merge to `main` through a pull request** and wait for the push self-test on that exact
+2. **Run `make advisories` on the commit you mean to tag; it must be clean.** What the template
+   ships goes stale without a commit, and a release publishes whatever is stale. (Details below.)
+   Then **merge to `main` through a pull request** and wait for the push self-test on that exact
    commit to go green — including the image builds and the copier-update gate, which run on
    push only.
 3. **Move `[Unreleased]` in `CHANGELOG.md` under the new version** (its own small PR).

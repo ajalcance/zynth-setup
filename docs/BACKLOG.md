@@ -20,7 +20,6 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | T16 | GitHub moves `ubuntu-latest` to Ubuntu 26 on 2026-10-19. Every shipped workflow and this repository's CI run on it. Pin or test ahead of the switch rather than learn about it from a red scheduled run. | A CI annotation on the v3.2.1 run |
 | T17 | `docker/setup-buildx-action` and `docker/setup-qemu-action` target Node 20, which GitHub has deprecated and now forces to Node 24. Bump both where the template ships them (`release.yml`) and here. | A CI annotation on the v3.2.1 run |
 | T18 | The confinement hook reads a `sed -i` script as a file path: `sed -i '' 's/a$/b/' f` is refused because the script holds a `$`. Skip the script argument (the first non-option word, or each `-e` value). | Preparing the v3.3.0 release |
-| T25 | Nothing tells the maintainer that the template's own lockfiles went red between releases. The generated project audits itself, but only an adopter's CI runs that: for about three weeks (2026-10-06 to 2026-10-29) the template shipped Next.js with three critical RCEs while Actions was locked for billing and Dependabot's PRs (insufficient, or a major bump) sat unread. Add a local `make advisories` that audits each template lockfile in a copy, prints how many packages it inspected, and exits non-zero on a finding, and say in MAINTAINING when to run it (before every release, and weekly). | GitHub's "34 vulnerabilities" banner on a push, 2026-10-29 |
 
 ## Carried over
 
@@ -36,6 +35,7 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | ID | What | Release |
 |---|---|---|
 | T14 | Eight dev-only advisories in the frontend/docs-site lockfiles; vitest ^4. | v3.2.1 |
+| T25 | `make advisories`: the template's own lockfiles and Python pins audited on the maintainer's machine, required clean before a release. | v3.3.1 |
 | T6 | Adopters' Dependabot gains the `pre-commit` ecosystem their hook SHAs were promised. | v3.3.0 |
 | T12 | Adopters' Dependabot flags guard bumps `needs-owner` instead of applying the consent label; the flag is provisioned. | v3.3.0 |
 | T13 | pre-commit pinned at one version across the template's manifests, and a guard that compares every manifest. | v3.3.0 |
