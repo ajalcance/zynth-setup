@@ -26,6 +26,15 @@ version must sort above the one before it.
   Nothing else changes. If you cannot update yet, a project on 3.3.0 or earlier should not serve
   Next.js image optimization or `use cache` to untrusted users.
 
+### Security — black 26.10.1 in the generated backend's dev requirements
+
+- `black` 26.5.1 → **26.10.1** (GHSA-cg8m-r9f2-5wm2 / CVE-2026-114134: Black's GitHub Action
+  installed whatever version a pull request wrote into `tool.black.required-version`). The
+  template installs black from pip and does not use that Action, so the advisory does not reach a
+  generated project's CI; the pin moves so no audit of the shipped requirements reports it. No
+  shipped file is reformatted: black 26.10.1 leaves all 56 Python files under `template/`
+  unchanged. **On update:** re-install the dev requirements.
+
 ### Template repository (no change for adopters)
 
 - **`make advisories` audits what the template ships, with no CI in the loop.** It runs
