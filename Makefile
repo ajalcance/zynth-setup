@@ -13,22 +13,25 @@
 #   make venv     a root .venv with the pinned tools (requirements-selftest.txt)
 #   make verify   generate full, minimal and hooks-off from the working tree; run their gates
 #                 (slow; required before committing any change under template/)
+#   make advisories  audit the template's lockfiles and Python pins against the registries
+#                 (needs the network; run before every release and weekly — see MAINTAINING.md)
 PY ?= .venv/bin/python
+PIP_AUDIT ?= .venv/bin/pip-audit
 ZIZMOR ?= .venv/bin/zizmor
 CI_TOOLS ?= $(HOME)/.cache/ci-tools
 # The root harness. template/ has its own gates and is proved by generating from it.
 HARNESS := scripts tests
 
-.PHONY: help check hooks hooks-install lint policy test venv verify
+.PHONY: help check hooks hooks-install lint policy test venv verify advisories
 
 help:
-	@echo "Targets: check | hooks | hooks-install | lint | policy | test | venv | verify"
+	@echo "Targets: check | hooks | hooks-install | lint | policy | test | venv | verify | advisories"
 
 check: hooks lint policy test
 
 venv:
 	python3 -m venv .venv
-	.venv/bin/pip install -q -c requirements-selftest.txt copier jinja2 pyyaml pytest ruff black zizmor pre-commit
+	.venv/bin/pip install -q -c requirements-selftest.txt copier jinja2 pyyaml pytest ruff black zizmor pre-commit pip-audit
 
 # The same hooks the template ships, at the same SHAs (.pre-commit-config.yaml).
 hooks:
@@ -59,3 +62,9 @@ test:
 
 verify:
 	scripts/verify-generations.sh $(VARIANTS)
+
+# What the template ships goes stale without a commit: an advisory is published against a
+# lockfile nobody touched. This asks the registries, with no CI in the loop. Needs node and the
+# network, so it is not part of `make check`; run it before every release and weekly.
+advisories:
+	PIP_AUDIT=$(PIP_AUDIT) $(PY) scripts/check_advisories.py
