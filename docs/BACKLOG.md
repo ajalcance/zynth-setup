@@ -29,6 +29,7 @@ weakness. Items leave this file when they ship, with the release that shipped th
 | C2 | Image scanning, SBOM and provenance attestations for the deploy module (audit point 12 says they are not shipped). |
 | C3 | A separate GitHub identity for the agent — the only complete fix for self-approval; the meta-guard could then check *who* applied a label. |
 | C4 | Tell adopters generated before v3.1.0 with an empty `author_name`/`author_email` to pass them once on update. |
+| C5 | **Accepted, dev-only:** `minimatch` <11.0.1 (GHSA-g3hv-75wg-m249, moderate denial of service in glob matching) in both apps' lockfiles, reached only through eslint and typescript-eslint. No compatible fix exists (2026-11-01): `minimatch` 11 is days old and no dependent has moved to it (eslint 10.14 wants ^10.2.6, typescript-estree ^10.2.2, `@eslint/eslintrc` and the eslint plugins ^3). An `overrides` entry would push eslint's own dependency across up to eight majors, so it is not done. `make advisories` reports it as a notice. **Revisit** when a release of eslint, typescript-eslint or the plugins requires `minimatch` ^11, or when the notice becomes high. If GitHub raises an alert for it, dismiss it as "risk is tolerable" and link this row. |
 
 ## Shipped
 

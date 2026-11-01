@@ -76,14 +76,51 @@ def npm_report(total: int, vulnerable: dict | None = None, listed: bool = True) 
     }
 
 
-NEXT_CRITICAL = {
-    "next": {
-        "severity": "critical",
-        "range": "16.0.0 - 16.4.0",
-        "isDirect": True,
-        "via": [{"source": 1}, {"source": 2}, {"source": 3}],
-        "fixAvailable": {"name": "next", "version": "16.4.3", "isSemVerMajor": False},
+def carrier(
+    severity: str,
+    nodes: list[str] | None = None,
+    *,
+    advisories: int = 1,
+    effects: list[str] | None = None,
+    fix=False,
+    direct: bool = False,
+    via_severities: list[str] | None = None,
+) -> dict:
+    """A package npm names advisories for. `nodes` are its installed copies in the lockfile."""
+    severities = via_severities or [severity] * advisories
+    return {
+        "severity": severity,
+        "range": "<9.9.9",
+        "isDirect": direct,
+        "via": [
+            {
+                "source": i,
+                "title": f"advisory number {i}",
+                "url": f"https://github.com/advisories/GHSA-aaaa-bbbb-{i:04d}",
+                "severity": s,
+                "range": "<9.9.9",
+            }
+            for i, s in enumerate(severities)
+        ],
+        "effects": effects or [],
+        "nodes": nodes if nodes is not None else [],
+        "fixAvailable": fix,
     }
+
+
+def inheritor(severity: str, *roots: str) -> dict:
+    """A package that is only vulnerable because it depends on one that is."""
+    return {"severity": severity, "via": list(roots), "effects": [], "nodes": [], "range": "*"}
+
+
+NEXT_CRITICAL = {
+    "next": carrier(
+        "critical",
+        ["node_modules/next"],
+        advisories=3,
+        direct=True,
+        fix={"name": "next", "version": "16.4.3", "isSemVerMajor": False},
+    )
 }
 
 
@@ -197,18 +234,19 @@ def test_an_npm_finding_fails_and_names_package_severity_and_fix(box):
 
 
 def test_findings_are_listed_worst_first_not_alphabetically(box):
-    # The names sort the opposite way to the severities, so sorting by name cannot pass.
+    # The names sort the opposite way to the severities, so sorting by name cannot pass. No node is
+    # given, which counts as production, so all four fail and share one list.
     vulns = {
-        "aaa-low": {"severity": "low", "via": [], "fixAvailable": True},
-        "zzz-critical": {"severity": "critical", "via": [], "fixAvailable": True},
-        "mmm-high": {"severity": "high", "via": [], "fixAvailable": True},
-        "bbb-moderate": {"severity": "moderate", "via": [], "fixAvailable": True},
+        "aaa-low": carrier("low"),
+        "zzz-critical": carrier("critical"),
+        "mmm-high": carrier("high"),
+        "bbb-moderate": carrier("moderate"),
     }
     result = box.run(npm={**CLEAN_NPM, "frontend": npm_report(4, vulns)})
     named = [
         x.split(":")[2].split()[0]
         for x in result.stdout.splitlines()
-        if x.startswith("advisories:   ")
+        if x.startswith("advisories:   FAIL")
     ]
     assert named == ["zzz-critical", "mmm-high", "bbb-moderate", "aaa-low"], named
 
@@ -349,7 +387,7 @@ def test_details_print_before_the_verdict_on_one_stream(box):
         timeout=60,
         env=env,
     ).stdout
-    assert merged.index("critical: next") < merged.index("FAIL"), merged
+    assert merged.index("critical: next") < merged.index("advisories: FAIL —"), merged
 
 
 def test_npm_that_prints_nothing_is_refused(box):
@@ -401,18 +439,161 @@ def test_a_missing_shipped_pin_file_is_refused(box):
 
 
 def test_an_unexpected_crash_is_a_refusal_never_a_pass_or_a_traceback(box):
-    # A directory where a lockfile belongs: shutil.copy raises, which nothing anticipated.
-    lock = box.root / FRONTEND / "package-lock.json"
+    # npm output shaped in a way nothing anticipated: `vulnerabilities` is not a mapping.
+    report = npm_report(3)
+    report["vulnerabilities"] = "oops"
+    result = box.run(npm={**CLEAN_NPM, "frontend": report})
+    assert result.returncode == 2, both(result)
+    assert "crashed" in result.stderr and "Traceback" not in result.stderr
+
+
+def test_a_lockfile_that_is_not_readable_json_is_refused(box):
+    (box.root / FRONTEND / "package-lock.json").write_text("{not json")
+    result = box.run()
+    assert result.returncode == 2 and "lockfile unreadable" in both(result)
+
+
+def test_a_lockfile_that_is_a_directory_is_refused(box):
+    lock = box.root / DOCS / "package-lock.json"
     lock.unlink()
     lock.mkdir()
     result = box.run()
-    assert result.returncode == 2, both(result)
-    assert "crashed" in result.stderr and "Traceback" not in result.stderr
+    assert result.returncode == 2 and "lockfile unreadable" in both(result)
 
 
 def test_a_refusal_does_not_print_ok(box):
     result = box.run(npm={"*": ""})
     assert "OK" not in result.stdout
+
+
+# --- what fails and what is only a notice ---------------------------------------------------
+
+MM = "node_modules/mm"
+
+
+def set_lock(box, packages: dict, app: str = FRONTEND) -> None:
+    (box.root / app / "package-lock.json").write_text(json.dumps({"packages": packages}))
+
+
+def run_with(box, vulns: dict, lock: dict, total: int = 3):
+    set_lock(box, lock)
+    return box.run(npm={**CLEAN_NPM, "frontend": npm_report(total, vulns)})
+
+
+def test_a_moderate_advisory_in_the_dev_tree_is_a_notice_not_a_failure(box):
+    vulns = {"mm": carrier("moderate", [MM], effects=["a", "b", "c"])}
+    result = run_with(box, vulns, {MM: {"dev": True}})
+    assert result.returncode == 0, both(result)
+    assert "notice moderate: mm" in result.stdout
+    assert "3 dependent package(s) inherit it" in result.stdout
+    assert "dev-only" in result.stdout and "FAIL" not in both(result)
+    # Counted, never silent: the verdict says there are notices and tells the maintainer to read.
+    assert "1 notice(s)" in result.stdout and "read them" in result.stdout
+
+
+def test_a_low_advisory_in_the_dev_tree_is_a_notice(box):
+    result = run_with(box, {"mm": carrier("low", [MM])}, {MM: {"dev": True}})
+    assert result.returncode == 0 and "notice low: mm" in result.stdout
+
+
+@pytest.mark.parametrize("severity", ["critical", "high"])
+def test_a_high_or_critical_advisory_fails_even_in_the_dev_tree(box, severity):
+    result = run_with(box, {"mm": carrier(severity, [MM])}, {MM: {"dev": True}})
+    assert result.returncode == 1, both(result)
+    assert f"FAIL {severity}: mm" in result.stdout and "dev-only" in result.stdout
+
+
+@pytest.mark.parametrize("severity", ["moderate", "low"])
+def test_any_advisory_in_a_production_dependency_fails(box, severity):
+    result = run_with(box, {"mm": carrier(severity, [MM])}, {MM: {}})
+    assert result.returncode == 1, both(result)
+    assert f"FAIL {severity}: mm" in result.stdout and "PRODUCTION" in result.stdout
+
+
+def test_a_dev_optional_package_counts_as_production(box):
+    # `devOptional` means dev OR an optional production dependency: not provably dev-only.
+    result = run_with(box, {"mm": carrier("moderate", [MM])}, {MM: {"devOptional": True}})
+    assert result.returncode == 1 and "PRODUCTION" in result.stdout
+
+
+def test_one_production_copy_among_dev_copies_fails(box):
+    nested = "node_modules/x/node_modules/mm"
+    lock = {MM: {"dev": True}, nested: {}}
+    result = run_with(box, {"mm": carrier("moderate", [MM, nested])}, lock)
+    assert result.returncode == 1 and "PRODUCTION" in result.stdout
+
+
+def test_a_copy_the_lockfile_does_not_list_is_treated_as_production(box):
+    result = run_with(box, {"mm": carrier("moderate", ["node_modules/ghost"])}, {MM: {"dev": True}})
+    assert result.returncode == 1 and "PRODUCTION" in result.stdout
+
+
+def test_a_package_npm_gives_no_location_for_is_treated_as_production(box):
+    result = run_with(box, {"mm": carrier("moderate", [])}, {MM: {"dev": True}})
+    assert result.returncode == 1 and "PRODUCTION" in result.stdout
+
+
+def test_the_worst_of_a_packages_advisories_decides(box):
+    # Its summary severity says low; one of its advisories is high. High wins.
+    vuln = carrier("low", [MM], via_severities=["low", "high"])
+    result = run_with(box, {"mm": vuln}, {MM: {"dev": True}})
+    assert result.returncode == 1 and "FAIL high: mm" in result.stdout
+
+
+def test_packages_that_only_inherit_an_advisory_are_counted_not_listed(box):
+    vulns = {
+        "mm": carrier("moderate", [MM], effects=["eslint", "plugin-a", "plugin-b"]),
+        "eslint": inheritor("moderate", "mm"),
+        "plugin-a": inheritor("moderate", "mm"),
+        "plugin-b": inheritor("moderate", "mm"),
+    }
+    result = run_with(box, vulns, {MM: {"dev": True}}, total=9)
+    detail = [x for x in result.stdout.splitlines() if x.startswith("advisories:   ")]
+    assert len(detail) == 1, detail
+    assert "mm" in detail[0] and "3 dependent package(s) inherit it" in detail[0]
+    assert result.returncode == 0
+
+
+def test_vulnerabilities_with_no_advisory_named_anywhere_still_fail(box):
+    vulns = {"eslint": inheritor("moderate", "mm")}
+    report = npm_report(3, vulns)
+    report["metadata"]["vulnerabilities"]["total"] = 1
+    set_lock(box, {})
+    result = box.run(npm={**CLEAN_NPM, "frontend": report})
+    assert result.returncode == 1 and "did not list" in both(result)
+
+
+def test_a_notice_does_not_hide_a_failure_in_the_same_run(box):
+    notice = {"mm": carrier("moderate", [MM])}
+    set_lock(box, {MM: {"dev": True}})
+    result = box.run(
+        npm={"frontend": npm_report(3, notice), "docs-site": npm_report(2, NEXT_CRITICAL)}
+    )
+    assert result.returncode == 1, both(result)
+    assert "FAIL critical: next" in result.stdout and "notice moderate: mm" in result.stdout
+    assert "1 finding(s), 1 notice(s)" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("fix", "expected"),
+    [
+        ({"name": "next", "version": "16.4.3", "isSemVerMajor": False}, "fix: next@16.4.3"),
+        ({"name": "eslint", "version": "4.0.0", "isSemVerMajor": True}, "no compatible fix"),
+        (True, "fix: npm audit fix"),
+        (False, "no fix available"),
+    ],
+)
+def test_the_fix_status_is_stated_plainly(box, fix, expected):
+    result = run_with(box, {"mm": carrier("critical", [MM], fix=fix)}, {MM: {}})
+    assert expected in result.stdout
+
+
+def test_each_advisory_is_named_with_its_ghsa_id(box):
+    result = run_with(box, {"mm": carrier("critical", [MM], advisories=4)}, {MM: {}})
+    assert "advisory number 0 (GHSA-aaaa-bbbb-0000)" in result.stdout
+    assert "advisory number 1 (GHSA-aaaa-bbbb-0001)" in result.stdout, "the second is named too"
+    assert "advisory number 2" not in result.stdout, "only two are spelled out"
+    assert "+2 more" in result.stdout and "4 advisories" in result.stdout
 
 
 # --- the real repository: the layout this check depends on still exists ----------------------

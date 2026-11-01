@@ -8,17 +8,26 @@ the maintainer because the one thing that would have (the self-test's scheduled 
 This reads no CI. It asks the registries, on the maintainer's machine, about the files that ship:
 
 * each npm lockfile under template/ — `npm audit` on a COPY (npm cannot run inside a directory
-  named `{% if ... %}`), dev dependencies included: the generated gate only audits production, and a
-  dev-tree advisory still reaches every adopter's machine;
+  named `{% if ... %}`), dev dependencies included, so a dev-tree advisory is seen;
 * each shipped Python pin file — `pip-audit --no-deps` over the pinned lines, after the Jinja
   control lines are dropped so every optional module's pins are checked. Direct pins only: the
   template pins nothing else, and an unpinned transitive version is the adopter's install, not ours.
 
-Exit 0: inspected something, found nothing. Exit 1: a finding. Exit 2: could not inspect (no npm, no
-pip-audit, a registry error, output it does not understand, or nothing to inspect) — refused rather
-than reported clean, because "OK over zero packages" is the failure every guard here was built
-against. Run it before every release and weekly (MAINTAINING.md); it needs the network, so it is not
-part of `make check`.
+What FAILS, and what is only reported. The line is the one the generated project's own gate draws
+(`npm audit --omit=dev --audit-level=high`, decided in the third adopter review): chasing every
+dev-tree advisory is whack-a-mole, and some have no fix at all — a check that is always red is a
+check nobody reads. So an npm advisory fails the run when it is high or critical ANYWHERE, or of
+any severity in a PRODUCTION dependency (it ships in what adopters run). A moderate or low advisory
+in the dev tree only is a NOTICE: printed in full, counted in the verdict, never silent, and not a
+failure. Every Python pin finding fails: pip-audit gives no severity, and a direct pin can always
+be bumped. Only the packages that carry an advisory are listed; the ones that merely depend on
+them are counted.
+
+Exit 0: inspected something, nothing failing (notices are counted). Exit 1: a failing finding.
+Exit 2: could not inspect (no npm, no pip-audit, a registry error, output it does not understand,
+or nothing to inspect) — refused rather than reported clean, because "OK over zero packages" is
+the failure every guard here was built against. Run it before every release and weekly
+(MAINTAINING.md); it needs the network, so it is not part of `make check`.
 """
 
 from __future__ import annotations
@@ -36,6 +45,9 @@ from dataclasses import dataclass, field
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 EXIT_OK, EXIT_FINDINGS, EXIT_REFUSED = 0, 1, 2
 TIMEOUT = 600
+# An npm advisory at one of these severities fails the run wherever it sits; below them it fails
+# only in a production dependency (see the module docstring).
+FAIL_SEVERITIES = ("critical", "high")
 
 # Shipped Python pins. The backend pair is audited together (the dev file includes the runtime
 # one); the others stand alone. Root requirements-selftest.txt is what judges the template itself.
@@ -58,7 +70,8 @@ class Result:
     label: str
     inspected: int
     unit: str
-    findings: list[str] = field(default_factory=list)
+    findings: list[str] = field(default_factory=list)  # these fail the run
+    notices: list[str] = field(default_factory=list)  # these are reported and counted only
 
 
 def _tool(env_name: str, default: str) -> str:
@@ -104,6 +117,11 @@ def audit_npm(lock: pathlib.Path, npm: str) -> Result:
     manifest = lock.with_name("package.json")
     if not manifest.is_file():
         raise RefusedError(f"{label}: no package.json beside the lockfile")
+    try:
+        # Which installed copies are dev-only: the lockfile marks them, npm audit's output does not.
+        packages = json.loads(lock.read_text()).get("packages") or {}
+    except (OSError, ValueError, AttributeError) as exc:
+        raise RefusedError(f"{label}: lockfile unreadable — {exc}") from exc
     with tempfile.TemporaryDirectory(prefix="advisories-npm-") as tmp:
         work = pathlib.Path(tmp)
         shutil.copy(manifest, work / "package.json")
@@ -122,25 +140,77 @@ def audit_npm(lock: pathlib.Path, npm: str) -> Result:
     found = data.get("vulnerabilities") or {}
     counted = (meta.get("vulnerabilities") or {}).get("total", 0)
     result = Result(label, total, "package(s)")
-    for name in sorted(found, key=lambda n: (_rank(found[n].get("severity")), n)):
-        info = found[name]
-        advisories = [v for v in info.get("via", []) if isinstance(v, dict)]
-        fix = info.get("fixAvailable")
-        fixed = f"{fix['name']}@{fix['version']}" if isinstance(fix, dict) else str(fix)
+    # A package "carries" an advisory when npm names one for it (a dict in `via`). The rest of the
+    # entries only depend on one that does: they inherit its severity and add nothing to triage.
+    carriers = {
+        n: i for n, i in found.items() if any(isinstance(v, dict) for v in i.get("via", []))
+    }
+    for name in sorted(carriers, key=lambda n: (_rank(_severity(carriers[n])), n)):
+        info = carriers[name]
+        severity = _severity(info)
+        production = _is_production(info, packages)
+        text = _describe(name, info, severity, production)
+        failing = severity in FAIL_SEVERITIES or production
+        (result.findings if failing else result.notices).append(text)
+    if (counted or found) and not carriers:
+        # npm reports vulnerabilities and names no advisory for any: do not trust a clean parse.
         result.findings.append(
-            f"{info.get('severity', '?')}: {name} {info.get('range', '')} "
-            f"({'direct' if info.get('isDirect') else 'transitive'}; "
-            f"{len(advisories)} advisor{'y' if len(advisories) == 1 else 'ies'}; fix {fixed})"
+            f"npm reports {counted or len(found)} vulnerabilit(ies) it did not list"
         )
-    if counted and not result.findings:
-        # npm says there are vulnerabilities but listed none: do not trust a clean parse.
-        result.findings.append(f"npm reports {counted} vulnerabilit(ies) it did not list")
     return result
 
 
+def _severity(info: dict) -> str:
+    """The worst severity among the advisories a package carries."""
+    seen = [v.get("severity") for v in info.get("via", []) if isinstance(v, dict)]
+    seen.append(info.get("severity"))
+    known = [s for s in seen if s in _SEVERITIES]
+    return min(known, key=_SEVERITIES.index) if known else "unknown"
+
+
+def _is_production(info: dict, packages: dict) -> bool:
+    """True if any installed copy of the package is outside the dev-only tree.
+
+    Conservative: a package npm gives no location for, or one the lockfile does not list, counts
+    as production — the answer that makes a mistake loud rather than quiet."""
+    nodes = info.get("nodes") or []
+    if not nodes:
+        return True
+    return any(not (packages.get(node) or {}).get("dev") for node in nodes)
+
+
+def _describe(name: str, info: dict, severity: str, production: bool) -> str:
+    advisories = [v for v in info.get("via", []) if isinstance(v, dict)]
+    titles = "; ".join(
+        f"{v.get('title', 'untitled')} ({str(v.get('url', '')).rsplit('/', 1)[-1] or '?'})"
+        for v in advisories[:2]
+    )
+    more = f"; +{len(advisories) - 2} more" if len(advisories) > 2 else ""
+    count = f"{len(advisories)} advisor{'y' if len(advisories) == 1 else 'ies'}"
+    inherit = len(info.get("effects") or [])
+    fix = info.get("fixAvailable")
+    if isinstance(fix, dict) and fix.get("isSemVerMajor"):
+        proposed = f"{fix.get('name')}@{fix.get('version')}"
+        how = f"no compatible fix (npm proposes a breaking change: {proposed})"
+    elif isinstance(fix, dict):
+        how = f"fix: {fix.get('name')}@{fix.get('version')}"
+    elif fix is True:
+        how = "fix: npm audit fix"
+    else:
+        how = "no fix available"
+    return (
+        f"{severity}: {name} {info.get('range', '')} — {count}: {titles}{more}; "
+        f"{'PRODUCTION' if production else 'dev-only'}, "
+        f"{'direct' if info.get('isDirect') else 'transitive'}; "
+        f"{inherit} dependent package(s) inherit it; {how}"
+    )
+
+
+_SEVERITIES = ("critical", "high", "moderate", "low", "info")
+
+
 def _rank(severity: str | None) -> int:
-    order = ("critical", "high", "moderate", "low", "info")
-    return order.index(severity) if severity in order else len(order)
+    return _SEVERITIES.index(severity) if severity in _SEVERITIES else len(_SEVERITIES)
 
 
 def audit_pip(pip_audit: str) -> list[Result]:
@@ -212,17 +282,31 @@ def main() -> int:
 
     total = sum(r.inspected for r in results)
     for r in results:
-        verdict = f"{len(r.findings)} finding(s)" if r.findings else "clean"
+        verdict = f"{len(r.findings)} finding(s), {len(r.notices)} notice(s)"
+        if not r.findings and not r.notices:
+            verdict = "clean"
         print(f"advisories: {r.label}: {r.inspected} {r.unit} — {verdict}")
         for finding in r.findings:
-            print(f"advisories:   {finding}")
+            print(f"advisories:   FAIL {finding}")
+        for notice in r.notices:
+            print(f"advisories:   notice {notice}")
     sys.stdout.flush()  # the details first, then the verdict, even when stderr is a different pipe
     flagged = sum(len(r.findings) for r in results)
+    noted = sum(len(r.notices) for r in results)
     scope = f"{len(results)} file(s), {total} package(s)/pin(s) inspected"
     if flagged:
-        print(f"advisories: FAIL — {flagged} finding(s) across {scope}", file=sys.stderr)
+        print(
+            f"advisories: FAIL — {flagged} finding(s), {noted} notice(s) across {scope}",
+            file=sys.stderr,
+        )
         return EXIT_FINDINGS
-    print(f"advisories: OK — {scope}, no known advisory")
+    if noted:
+        print(
+            f"advisories: OK — {scope}; nothing failing, {noted} notice(s) above "
+            "(moderate or low, dev-only): read them"
+        )
+    else:
+        print(f"advisories: OK — {scope}, no known advisory")
     return EXIT_OK
 
 

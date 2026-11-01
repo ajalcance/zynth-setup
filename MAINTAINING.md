@@ -125,8 +125,17 @@ make advisories    # needs node on PATH, the network, and `make venv` (for pip-a
 It audits each template lockfile (on a copy, dev dependencies included — npm cannot run in a
 `{% %}` directory) and each shipped Python pin file with the Jinja control lines dropped, so
 every optional module's pins are checked. It prints how many packages and pins it inspected and
-exits 1 on a finding, 2 when it could not look (no npm, a registry error, nothing to inspect);
-never read a 2 as "fine".
+exits 1 on a failing finding, 2 when it could not look (no npm, a registry error, nothing to
+inspect); never read a 2 as "fine".
+
+**What fails, and what is a notice.** The line is the generated project's own gate
+(`--audit-level=high`, third adopter review): an npm advisory fails the run when it is high or
+critical anywhere, or of any severity in a production dependency; a moderate or low advisory in
+the dev tree only is a *notice* — printed in full, counted in the verdict, not a failure. Every
+Python pin finding fails. A notice is a decision waiting for you, not noise: read it, and if it
+has no fix, record why in the backlog (see C5) rather than overriding a dependency's range.
+GitHub's own alert count is larger than this list: it raises one alert per manifest, so every
+advisory on a package in both apps' `package.json` and `package-lock.json` is four alerts.
 
 **Run it weekly and before every release.** CI cannot be the only thing that tells you: in
 October 2026 the template shipped Next.js with three critical RCEs for three weeks because the
