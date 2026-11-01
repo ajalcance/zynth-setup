@@ -9,9 +9,15 @@ version must sort above the one before it.
 
 ## [Unreleased]
 
+## [3.3.1] — 2026-10-30 — Next.js 16.4.2: three critical remote code executions fixed
+
+**Update now if you generated a project with the frontend or docs-site module from any release
+before this one** (3.0.1 through 3.3.0 pin Next.js 16.3.5; 3.0.0 pinned 16.2.11, also affected).
+`copier update`, then `npm ci` in each app.
+
 ### Security — Next.js 16.4.2 in the generated frontend and docs-site
 
-- **Every project generated from 3.2.1 or 3.3.0 with the frontend or docs-site module pins
+- **Every project generated from 3.0.1 through 3.3.0 with the frontend or docs-site module pins
   Next.js 16.3.5, which has three critical, unauthenticated remote-code-execution advisories**
   (image optimization with SVG files, `use cache` functions returning typed arrays, and
   `next/og`), plus cache poisoning, SSRF and denial-of-service advisories. All are fixed from
